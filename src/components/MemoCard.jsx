@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Edit2, Trash2, Check, X, Hash, CheckCircle2, Circle, Image, ZoomIn } from 'lucide-react'
 import { useMemos } from '../hooks/useMemos'
+import { parseTags } from '../utils/db'
 
 export default function MemoCard({ memo }) {
   const { editMemo, removeMemo, toggleMemoStatus, filterByTag } = useMemos()
@@ -10,6 +11,7 @@ export default function MemoCard({ memo }) {
   const editTextareaRef = useRef(null)
   const MAX_LINES = 20
   const LINE_HEIGHT = 28
+  const EDIT_MIN_ROWS = 4
 
   const isProcessed = memo.status === 'processed'
   const images = memo.images || []
@@ -57,12 +59,14 @@ export default function MemoCard({ memo }) {
     const ta = editTextareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
+    const minHeight = EDIT_MIN_ROWS * LINE_HEIGHT
     const maxHeight = MAX_LINES * LINE_HEIGHT
-    if (ta.scrollHeight > maxHeight) {
+    const scrollHeight = ta.scrollHeight
+    if (scrollHeight > maxHeight) {
       ta.style.height = maxHeight + 'px'
       ta.style.overflowY = 'auto'
     } else {
-      ta.style.height = ta.scrollHeight + 'px'
+      ta.style.height = Math.max(scrollHeight, minHeight) + 'px'
       ta.style.overflowY = 'hidden'
     }
   }
@@ -108,24 +112,42 @@ export default function MemoCard({ memo }) {
               onChange={(e) => { setEditContent(e.target.value); adjustEditHeight() }}
               className="w-full resize-none border border-[#0077B6] rounded-xl p-3 text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#0077B6]/30"
               style={{ outline: 'none', height: 'auto', overflowY: 'hidden' }}
-              rows={2}
+              rows={4}
               autoFocus
             />
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={handleCancel}
-                className="flex items-center gap-1 px-3 py-1.5 text-gray-500 hover:text-gray-700 text-sm"
-              >
-                <X size={14} />
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex items-center gap-1 px-3 py-1.5 bg-[#0077B6] text-white rounded-lg text-sm hover:bg-[#005f8c]"
-              >
-                <Check size={14} />
-                保存
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              {(() => {
+                const tags = parseTags(editContent)
+                if (tags.length > 0) {
+                  return (
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-[#0077B6] text-xs rounded-lg">
+                          <Hash size={10} />
+                          {tag.slice(1)}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                }
+                return <div />
+              })()}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCancel}
+                  className="flex items-center gap-1 px-3 py-1.5 text-gray-500 hover:text-gray-700 text-sm"
+                >
+                  <X size={14} />
+                  取消
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#0077B6] text-white rounded-lg text-sm hover:bg-[#005f8c]"
+                >
+                  <Check size={14} />
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -163,6 +185,9 @@ export default function MemoCard({ memo }) {
               <span className={`text-xs ${isProcessed ? 'text-green-500' : 'text-gray-400'}`}>{formatDate(memo.createdAt)}</span>
 
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {isProcessed && memo.processedAt && (
+                  <span className="text-xs text-green-500">{formatDate(memo.processedAt)}</span>
+                )}
                 <button
                   onClick={handleToggleStatus}
                   className={`p-1.5 rounded-lg transition-colors ${isProcessed ? 'text-green-500 hover:bg-green-50' : 'text-gray-400 hover:text-green-500 hover:bg-green-50'}`}
@@ -186,16 +211,6 @@ export default function MemoCard({ memo }) {
                 </button>
               </div>
             </div>
-
-            {isProcessed && (
-              <div className="mt-2 pt-2 border-t border-gray-100">
-                <span className="text-xs text-green-500 flex items-center gap-1">
-                  <CheckCircle2 size={12} />
-                  已处理
-                  {memo.processedAt && ` · ${formatDate(memo.processedAt)}`}
-                </span>
-              </div>
-            )}
           </>
         )}
       </div>
