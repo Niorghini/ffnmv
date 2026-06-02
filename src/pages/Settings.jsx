@@ -4,8 +4,9 @@
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, LogOut } from 'lucide-react'
+import { ArrowLeft, RefreshCw, LogOut, Eraser } from 'lucide-react'
 import { getArchiveAfterDays, setArchiveAfterDays, runArchive } from '@/lib/autoArchive'
+import { tagsRepo } from '@/repositories/tagsRepo'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useSyncStore } from '@/stores/useSyncStore'
@@ -21,9 +22,13 @@ const Settings = () => {
   const { lastSyncAt } = useSyncStore()
   const [days, setDays] = useState(30)
   const [saved, setSaved] = useState(false)
+  const [unusedCount, setUnusedCount] = useState(null)
+  const [cleaning, setCleaning] = useState(false)
+  const [cleanedMsg, setCleanedMsg] = useState('')
 
   useEffect(() => {
     getArchiveAfterDays().then(setDays)
+    tagsRepo.findUnused().then((u) => setUnusedCount(u.length))
   }, [])
 
   const handleChange = async (v) => {
@@ -40,6 +45,28 @@ const Settings = () => {
 
   const handleSync = async () => {
     await getSyncManager().fullSync()
+  }
+
+  const handleHardDeleteUnused = async () => {
+    if (cleaning) return
+    if (unusedCount === 0) {
+      alert('没有未使用的标签')
+      return
+    }
+    if (!confirm(`将物理删除 ${unusedCount} 个未使用的标签（本地 + 云端）。\n此操作不可恢复，继续？`)) {
+      return
+    }
+    setCleaning(true)
+    try {
+      const count = await tagsRepo.hardDeleteUnused()
+      setUnusedCount(0)
+      setCleanedMsg(`已删除 ${count} 个未用标签`)
+      setTimeout(() => setCleanedMsg(''), 3000)
+    } catch (e) {
+      alert('删除失败：' + e.message)
+    } finally {
+      setCleaning(false)
+    }
   }
 
   return (
@@ -101,9 +128,31 @@ const Settings = () => {
 
         <section className="bg-white rounded-lg shadow-sm p-4">
           <h2 className="text-sm font-medium text-gray-800 mb-2">数据</h2>
-          <Link to="/trash" className="text-sm text-[#0077B6] hover:underline">
-            回收站（30 天内可恢复）
-          </Link>
+          <div className="space-y-3">
+            <Link to="/trash" className="text-sm text-[#0077B6] hover:underline block">
+              回收站（30 天内可恢复）
+            </Link>
+            <div className="pt-2 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-700">未使用标签</span>
+                <span className="text-xs text-gray-400">
+                  {unusedCount === null ? '加载中...' : `${unusedCount} 个`}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mb-2">
+                没有任何笔记引用的标签。会从本地和云端同时删除。
+              </p>
+              <button
+                onClick={handleHardDeleteUnused}
+                disabled={cleaning || unusedCount === 0}
+                className="text-xs px-3 py-1.5 border border-red-500 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+              >
+                <Eraser size={12} />
+                {cleaning ? '清理中...' : '硬删除未用标签'}
+              </button>
+              {cleanedMsg && <div className="text-xs text-[#0077B6] mt-2">{cleanedMsg}</div>}
+            </div>
+          </div>
         </section>
 
         <section className="bg-white rounded-lg shadow-sm p-4">

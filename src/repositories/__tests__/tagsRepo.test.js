@@ -116,4 +116,68 @@ describe('tagsRepo', () => {
     expect(counts.get(t1.id)).toBe(2) // n1, n2
     expect(counts.get(t2.id)).toBe(1) // n2
   })
+
+  // ── findUnused / hardDelete / hardDeleteUnused ──────────────────
+  it('findUnused 返回没有活跃 note_tags 链接的 tag', async () => {
+    const [used] = await tagsRepo.findOrCreate(['used'])
+    const [unused] = await tagsRepo.findOrCreate(['unused'])
+    const n = await notesRepo.create({ content: 'x', tagIds: [used.id] })
+    const unused_list = await tagsRepo.findUnused()
+    const ids = unused_list.map((t) => t.id)
+    expect(ids).toContain(unused.id)
+    expect(ids).not.toContain(used.id)
+  })
+
+  it('findUnused 不算 link.deleted_at 已设的（软删 link 视为未用）', async () => {
+    const [t] = await tagsRepo.findOrCreate(['once'])
+    const n = await notesRepo.create({ content: 'x', tagIds: [t.id] })
+    // 软删 link
+    const links = await db.note_tags.where({ note_id: n.id, tag_id: t.id }).toArray()
+    await db.note_tags.put({ ...links[0], deleted_at: '2026-01-01T00:00:00.000Z' })
+    const unused_list = await tagsRepo.findUnused()
+    expect(unused_list.map((x) => x.id)).toContain(t.id)
+  })
+
+  it('findUnused 软删的 tag 也算未用（默认 includeSoftDeleted=true）', async () => {
+    const [t] = await tagsRepo.findOrCreate(['soft'])
+    await tagsRepo.softDelete(t.id)
+    const unused_list = await tagsRepo.findUnused()
+    expect(unused_list.map((x) => x.id)).toContain(t.id)
+  })
+
+  it('findUnused includeSoftDeleted=false 排除软删 tag', async () => {
+    const [t] = await tagsRepo.findOrCreate(['soft'])
+    await tagsRepo.softDelete(t.id)
+    const unused_list = await tagsRepo.findUnused({ includeSoftDeleted: false })
+    expect(unused_list.map((x) => x.id)).not.toContain(t.id)
+  })
+
+  it('hardDelete 物理删 tag + 清 sync_queue 残留', async () => {
+    const [t] = await tagsRepo.findOrCreate(['t'])
+    await db.sync_queue.add({
+      type: 'update',
+      entity_type: 'tags',
+      entity_id: t.id,
+      priority: 5,
+      status: 'pending',
+      created_at: '2026-01-01T00:00:00.000Z',
+    })
+    expect(await db.tags.get(t.id)).toBeTruthy()
+    await tagsRepo.hardDelete(t.id)
+    expect(await db.tags.get(t.id)).toBeUndefined()
+    const residual = await db.sync_queue.where('entity_id').equals(t.id).toArray()
+    expect(residual).toHaveLength(0)
+  })
+
+  it('hardDeleteUnused 批量删未用 tag 跳过有引用的', async () => {
+    const [used] = await tagsRepo.findOrCreate(['used'])
+    const [u1] = await tagsRepo.findOrCreate(['u1'])
+    const [u2] = await tagsRepo.findOrCreate(['u2'])
+    await notesRepo.create({ content: 'x', tagIds: [used.id] })
+    const count = await tagsRepo.hardDeleteUnused()
+    expect(count).toBe(2)
+    expect(await db.tags.get(u1.id)).toBeUndefined()
+    expect(await db.tags.get(u2.id)).toBeUndefined()
+    expect(await db.tags.get(used.id)).toBeTruthy()
+  })
 })

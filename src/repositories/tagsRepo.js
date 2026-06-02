@@ -7,6 +7,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { db, nowIso } from '@/lib/db'
 import { colorFromName, emitDataUpdated } from '@/lib/tags'
+import { supabase } from '@/lib/supabase'
 
 const enqueue = (type, tagId) =>
   db.sync_queue.add({
@@ -264,6 +265,64 @@ export const tagsRepo = {
   async _putDirect(tag) {
     await db.tags.put(tag)
   },
+
+  /**
+   * 找出"未使用"标签——没有任何活跃 note_tags 引用的标签
+   * (活跃 = link.deleted_at 为 null)
+   * 软删的标签默认视为未使用
+   */
+  async findUnused({ includeSoftDeleted = true } = {}) {
+    const allLinks = await db.note_tags.toArray()
+    const activeLinkTagIds = new Set(
+      allLinks.filter((l) => !l.deleted_at).map((l) => l.tag_id),
+    )
+    const allTags = await db.tags.toArray()
+    return allTags.filter((t) => {
+      if (!includeSoftDeleted && t.deleted_at) return false
+      return !activeLinkTagIds.has(t.id)
+    })
+  },
+
+  /**
+   * 物理删除一个标签（本地 + 云端 + 清残留 sync_queue）
+   * 注意：此操作不可恢复。调用前应已确认无活跃引用。
+   */
+  async hardDelete(id) {
+    // 1. 云端物理删除（如果有 user 登录 + RLS 允许）
+    const { data: userData } = await supabase.auth.getUser()
+    if (userData?.user) {
+      const { error } = await supabase.from('tags').delete().eq('id', id)
+      if (error) throw error
+    }
+    // 2. 本地：清残留 sync_queue entries（避免反复推送一个已删的 id）
+    await db.sync_queue
+      .where('entity_id').equals(id)
+      .and((q) => q.entity_type === 'tags')
+      .delete()
+    // 3. 本地：物理删 tag 行
+    await db.tags.delete(id)
+  },
+
+  /**
+   * 批量硬删除所有未使用标签
+   * @returns 删除的数量
+   */
+  async hardDeleteUnused() {
+    const unused = await this.findUnused()
+    let count = 0
+    for (const tag of unused) {
+      try {
+        await this.hardDelete(tag.id)
+        count++
+      } catch (e) {
+        console.warn(`[tagsRepo] hard delete ${tag.name} failed:`, e)
+      }
+    }
+    if (count > 0) emitDataUpdated('tags')
+    return count
+  },
+
+  /**
 
   /**
    * 统计每个 tag 的笔记数（未软删的）
