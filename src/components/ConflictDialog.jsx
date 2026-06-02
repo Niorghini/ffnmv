@@ -26,7 +26,7 @@ export const ConflictBanner = () => {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed top-3 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 bg-danger text-white text-xs rounded-full shadow-md flex items-center gap-2 hover:opacity-90"
+        className="fixed top-3 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 bg-red-500 text-white text-xs rounded-full shadow-md flex items-center gap-2 hover:opacity-90"
       >
         <AlertTriangle size={14} />
         <span>{unread} 条冲突待处理</span>
@@ -63,13 +63,13 @@ const ConflictDialog = ({ onClose }) => {
         <div className="flex-1 grid grid-cols-2 gap-3 p-4 overflow-y-auto">
           <div>
             <div className="text-xs text-gray-500 mb-1">本地版本</div>
-            <pre className="text-xs bg-bg-main p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap break-words">
+            <pre className="text-xs bg-bg-main p-3 rounded-lg overflow-auto max-h-96 whitespace-pre-wrap break-words">
               {JSON.stringify(conflict.local_data, null, 2)}
             </pre>
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">云端版本</div>
-            <pre className="text-xs bg-bg-main p-3 rounded overflow-auto max-h-96 whitespace-pre-wrap break-words">
+            <pre className="text-xs bg-bg-main p-3 rounded-lg overflow-auto max-h-96 whitespace-pre-wrap break-words">
               {JSON.stringify(conflict.cloud_data, null, 2)}
             </pre>
           </div>
@@ -83,13 +83,13 @@ const ConflictDialog = ({ onClose }) => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => resolve(conflict, 'local')}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               用本地
             </button>
             <button
               onClick={() => resolve(conflict, 'cloud')}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               用云端
             </button>
@@ -102,7 +102,7 @@ const ConflictDialog = ({ onClose }) => {
                   onClose()
                 }
               }}
-              className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark"
+              className="px-3 py-1.5 text-sm bg-[#0077B6] text-white rounded-lg hover:bg-[#005f8c] transition-colors"
             >
               <Check size={14} className="inline mr-1" />
               接受 LWW

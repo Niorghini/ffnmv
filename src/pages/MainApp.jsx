@@ -1,29 +1,26 @@
 /**
- * MainApp —— 三栏主界面
- * - 左 240px：TagList
- * - 中 flex-1：NoteList (含搜索/状态/虚拟滚动/FAB)
- * - 右 480px：Editor
- * - 顶栏：标题 + 同步指示器 + 手动同步 + 设置 + 登出
- * - 底部：冲突 banner
+ * MainApp —— v0.7.0 风格 2 栏布局
+ * - 顶部：logo + slogan（v0.7.0 风格）
+ * - max-w-6xl 居中容器
+ * - 左栏 flex-1：Editor（顶部）+ SearchBar + NoteList
+ * - 右栏 lg:w-80：Sidebar（sync + 状态筛选 + 标签 + 操作）
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Settings, LogOut, RefreshCw, Trash2 } from 'lucide-react'
 import { db } from '@/lib/db'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useNotesStore } from '@/stores/useNotesStore'
-import { useSyncStore } from '@/stores/useSyncStore'
-import TagList from '@/components/TagList'
-import NoteList from '@/components/NoteList'
 import Editor from '@/components/Editor'
-import SyncIndicator from '@/components/SyncIndicator'
+import SearchBar from '@/components/SearchBar'
+import NoteList from '@/components/NoteList'
+import Sidebar from '@/components/Sidebar'
 import { ConflictBanner } from '@/components/ConflictDialog'
+import logoUrl from '/logo.png'
 
 const MainApp = () => {
-  const { user, signOut } = useAuthStore()
-  const { notes, setActiveTagId, load } = useNotesStore()
-  const [activeId, setActiveId] = useState(null)
+  const { user } = useAuthStore()
+  const { activeId, setActiveId, setActiveTagId, load, activeTagId, statusFilter, searchQuery } = useNotesStore()
   const [activeNote, setActiveNote] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -39,7 +36,6 @@ const MainApp = () => {
     db.notes.get(activeId).then(setActiveNote)
   }, [activeId, refreshKey])
 
-  // 全局 data-updated 监听
   useEffect(() => {
     const handler = () => {
       setRefreshKey((k) => k + 1)
@@ -50,13 +46,7 @@ const MainApp = () => {
   }, [activeId])
 
   const handleSelect = (id) => {
-    setActiveTagId(null) // 清除 tag 过滤
     setActiveId(id)
-  }
-
-  const handleCreateNew = () => {
-    setActiveTagId(null)
-    setActiveId(null)
   }
 
   const handleSaved = () => {
@@ -69,73 +59,58 @@ const MainApp = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg-main">
-      <header className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-base font-semibold text-primary shrink-0">发法牛</h1>
-          <span className="text-xs text-gray-400 truncate">{user?.email}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <SyncIndicator />
-          <button
-            onClick={handleSync}
-            className="p-1.5 text-gray-500 hover:text-primary"
-            title="手动同步"
-            aria-label="手动同步"
-          >
-            <RefreshCw size={16} />
-          </button>
-          <Link
-            to="/trash"
-            className="p-1.5 text-gray-500 hover:text-primary"
-            title="回收站"
-            aria-label="回收站"
-          >
-            <Trash2 size={16} />
-          </Link>
-          <Link
-            to="/settings"
-            className="p-1.5 text-gray-500 hover:text-primary"
-            title="设置"
-            aria-label="设置"
-          >
-            <Settings size={16} />
-          </Link>
-          <button
-            onClick={signOut}
-            className="p-1.5 text-gray-500 hover:text-danger"
-            title="退出登录"
-            aria-label="退出登录"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-bg-main">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <header className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <img src={logoUrl} alt="发法牛" className="h-12" />
+              <p className="text-sm text-gray-400">发布的想法都很牛！</p>
+            </div>
+            {user && (
+              <div className="text-xs text-gray-400">{user.email}</div>
+            )}
+          </div>
+        </header>
 
-      <div className="flex-1 flex overflow-hidden relative">
-        <aside className="w-[240px] border-r border-gray-200 shrink-0">
-          <TagList />
-        </aside>
-        <section className="flex-1 min-w-0 border-r border-gray-200 relative">
-          <NoteList
-            activeId={activeId}
-            onSelect={handleSelect}
-            onCreateNew={handleCreateNew}
-          />
-        </section>
-        <section className="w-[480px] shrink-0">
-          <Editor
-            key={activeId || 'new'}
-            note={activeNote}
-            onSaved={handleSaved}
-            onBack={() => setActiveId(null)}
-          />
-        </section>
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 space-y-6 min-w-0">
+            <Editor
+              key={activeId || 'new'}
+              note={activeNote}
+              onSaved={handleSaved}
+              onCancel={() => setActiveId(null)}
+            />
+            <SearchBarWrapper />
+            <NoteList
+              activeId={activeId}
+              onSelect={handleSelect}
+              refreshKey={refreshKey}
+              onCountChange={() => {}}
+            />
+          </div>
+          <div className="lg:w-80 space-y-4 shrink-0">
+            <Sidebar onSync={handleSync} onConflictClick={() => {}} />
+          </div>
+        </div>
       </div>
-
       <ConflictBanner />
     </div>
   )
 }
+
+// SearchBar + 状态筛选 一行
+const SearchBarWrapper = () => {
+  const { searchQuery, setSearchQuery, statusFilter, setStatusFilter } = useNotesStore()
+  return (
+    <div className="space-y-2">
+      <SearchBar value={searchQuery} onChange={setSearchQuery} />
+      <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+    </div>
+  )
+}
+
+// 把 StatusFilter 留在独立文件以便测试
+import StatusFilter from '@/components/StatusFilter'
 
 export default MainApp

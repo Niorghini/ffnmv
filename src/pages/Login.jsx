@@ -1,8 +1,7 @@
 /**
- * 登录/注册页（PRD：邮箱 + 密码）
- * - 一个表单切换登录/注册
- * - 错误内联显示
- * - 成功后由 useAuthStore 触发 App 路由切换
+ * 登录/注册页（v0.7.0 风格）
+ * - 居中卡片
+ * - 蓝色主色
  */
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -38,12 +37,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-bg-main p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-primary mb-1">发法牛</h1>
+          <h1 className="text-2xl font-semibold text-[#0077B6] mb-1">发法牛</h1>
           <p className="text-sm text-gray-500">v1.2 · 轻量化多端同步笔记</p>
         </div>
 
         {!configured && (
-          <div className="mb-4 p-3 bg-warning-bg border border-warning text-warning text-xs rounded">
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg">
             未检测到 Supabase 配置。请在 <code>.env.local</code> 中设置
             <code className="mx-1">VITE_SUPABASE_URL</code> 和
             <code className="mx-1">VITE_SUPABASE_ANON_KEY</code>，然后重启 dev server。
@@ -58,7 +57,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#0077B6] focus:ring-2 focus:ring-[#0077B6]/20"
               placeholder="you@example.com"
             />
           </div>
@@ -70,13 +69,13 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#0077B6] focus:ring-2 focus:ring-[#0077B6]/20"
               placeholder="••••••"
             />
           </div>
 
           {error && (
-            <div className="text-xs text-danger bg-danger-bg px-3 py-2 rounded">
+            <div className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
               {error}
             </div>
           )}
@@ -84,7 +83,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading || !configured}
-            className="w-full py-2 bg-primary text-white rounded text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+            className="w-full py-2 bg-[#0077B6] text-white rounded-lg text-sm font-medium hover:bg-[#005f8c] disabled:opacity-50 transition-colors"
           >
             {loading ? '处理中...' : mode === 'signin' ? '登录' : '注册'}
           </button>
@@ -94,7 +93,7 @@ export default function Login() {
             <button
               type="button"
               onClick={switchMode}
-              className="ml-1 text-primary hover:underline"
+              className="ml-1 text-[#0077B6] hover:underline"
             >
               {mode === 'signin' ? '注册' : '登录'}
             </button>

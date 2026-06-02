@@ -55,15 +55,13 @@ describe('Editor', () => {
     expect(n.content).toBe('updated')
   })
 
-  it('状态切换：toggle status + 版本号自增', async () => {
+  it('状态切换：通过 NoteList 行的按钮（不在 Editor 里）', async () => {
+    // v0.7.0/v1.2 状态切换在 NoteList 行按钮,不在 Editor
     const note = await notesRepo.create({ content: 'x' })
     const onSaved = vi.fn()
     render(<Editor note={note} onSaved={onSaved} />)
-    const toggleBtn = screen.getByTitle('切换状态')
-    await userEvent.setup().click(toggleBtn)
-    await waitFor(() => expect(onSaved).toHaveBeenCalled())
-    const after = await db.notes.get(note.id)
-    expect(after.status).toBe('completed')
+    // Editor 不应该有"切换状态"按钮
+    expect(screen.queryByTitle('切换状态')).toBeNull()
   })
 
   it('显示识别出的 #tags', async () => {

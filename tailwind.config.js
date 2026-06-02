@@ -7,23 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#2F8C5C',
-        'primary-dark': '#1E6640',
-        danger: '#DC2626',
-        'danger-bg': '#FEF2F2',
-        warning: '#D97706',
-        'warning-bg': '#FFFBEB',
+        // 沿用 v0.7.0 蓝 (#0077B6)
+        primary: '#0077B6',
+        'primary-dark': '#005f8c',
         bg: {
-          main: '#F5F6F7',
+          main: '#f5f6f7',
           card: '#FFFFFF',
           sidebar: '#F0F1F2',
-        },
-        heatmap: {
-          0: '#EBEDF0',
-          1: '#9BE9A7',
-          2: '#40C463',
-          3: '#30A14E',
-          4: '#216E39',
         },
       },
       fontFamily: {
@@ -31,12 +21,12 @@ export default {
       },
       keyframes: {
         fadeInScale: {
-          '0%': { opacity: '0', transform: 'scale(0.8)' },
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
       },
       animation: {
-        fadeInScale: 'fadeInScale 0.3s ease forwards',
+        fadeInScale: 'fadeInScale 0.2s ease forwards',
       },
     },
   },

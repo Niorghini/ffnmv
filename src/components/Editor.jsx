@@ -1,19 +1,18 @@
 /**
- * Editor —— 右栏：选中笔记的编辑视图
- * - 存在笔记：300ms debounce 自动保存
- * - 新建：Ctrl+Enter 提交
- * - 标签高亮显示
- * - 顶部状态切换 + 删除
+ * Editor —— v0.7.0 风格单列编辑器
+ * - 位于左栏顶部
+ * - 新建：placeholder 提示 + Ctrl+Enter 提交
+ * - 编辑：300ms debounce 自动保存 + 小状态提示
+ * - 标签识别 + chip 预览
  */
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Circle, Trash2, ArrowLeft } from 'lucide-react'
 import { notesRepo } from '@/repositories/notesRepo'
 import { tagsRepo } from '@/repositories/tagsRepo'
 import { extractTagNames } from '@/lib/tags'
 
 const DEBOUNCE_MS = 300
 
-const Editor = ({ note, onSaved, onBack }) => {
+const Editor = ({ note, onSaved, onCancel }) => {
   const [content, setContent] = useState(note?.content ?? '')
   const [tags, setTags] = useState([])
   const [saving, setSaving] = useState(false)
@@ -26,8 +25,7 @@ const Editor = ({ note, onSaved, onBack }) => {
   }, [note?.id])
 
   useEffect(() => {
-    const names = extractTagNames(content)
-    setTags(names)
+    setTags(extractTagNames(content))
   }, [content])
 
   const scheduleAutoSave = (next) => {
@@ -54,8 +52,9 @@ const Editor = ({ note, onSaved, onBack }) => {
   const handleSubmit = async () => {
     if (!content.trim()) return
     const tagRecords = await tagsRepo.findOrCreate(extractTagNames(content))
-    const created = await notesRepo.create({ content, tagIds: tagRecords.map((t) => t.id) })
-    onSaved?.(created)
+    await notesRepo.create({ content, tagIds: tagRecords.map((t) => t.id) })
+    setContent('')
+    onSaved?.()
   }
 
   const handleKeyDown = (e) => {
@@ -65,84 +64,51 @@ const Editor = ({ note, onSaved, onBack }) => {
     }
   }
 
-  const handleStatusToggle = async () => {
-    if (!note?.id) return
-    const next = note.status === 'completed' ? 'pending' : 'completed'
-    await notesRepo.setStatus(note.id, next)
-    onSaved?.()
-  }
-
-  const handleDelete = async () => {
-    if (!note?.id) return
-    if (!confirm('确定删除？30 天内可在回收站恢复。')) return
-    await notesRepo.softDelete(note.id)
-    onSaved?.()
-  }
+  const statusLine = note
+    ? saving
+      ? '保存中...'
+      : savedAt
+      ? `已保存 ${formatTime(savedAt)}`
+      : ''
+    : content
+    ? 'Ctrl+Enter 提交'
+    : ''
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          {note && (
-            <button onClick={onBack} className="p-1 text-gray-400 hover:text-gray-600" title="返回列表">
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          {note ? (
-            <>
-              <button
-                onClick={handleStatusToggle}
-                className="text-gray-500 hover:text-primary"
-                title="切换状态"
-              >
-                {note.status === 'completed' ? (
-                  <CheckCircle2 size={18} className="text-primary" />
-                ) : (
-                  <Circle size={18} />
-                )}
-              </button>
-              <span className="text-xs text-gray-400">
-                {saving ? '保存中...' : savedAt ? `已保存 ${formatTime(savedAt)}` : formatTime(note.created_at)}
-              </span>
-            </>
-          ) : (
-            <span className="text-xs text-gray-400">新笔记</span>
-          )}
-        </div>
-        {note && (
-          <button onClick={handleDelete} className="text-gray-400 hover:text-danger" title="删除">
-            <Trash2 size={16} />
-          </button>
-        )}
-      </div>
+    <section className="bg-white rounded-lg shadow-sm p-4">
       <textarea
         value={content}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={note ? '编辑内容...' : '写下你的想法...（Ctrl+Enter 提交）'}
-        className="flex-1 w-full p-4 resize-none outline-none text-base leading-relaxed"
-        autoFocus
+        className="w-full resize-none outline-none text-base leading-relaxed placeholder:text-[#9ba1a6] focus:ring-0 border-0"
+        rows={4}
+        autoFocus={!note}
       />
-      {tags.length > 0 && (
-        <div className="px-4 py-2 border-t border-gray-100 flex flex-wrap gap-1">
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+        <div className="flex flex-wrap gap-1 min-h-[20px]">
           {tags.map((t) => (
-            <span key={t} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+            <span
+              key={t}
+              className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-[#0077B6] rounded"
+            >
               #{t}
             </span>
           ))}
         </div>
-      )}
-      {!note && content.trim() && (
-        <div className="px-4 py-2 border-t border-gray-100 flex justify-end">
-          <button
-            onClick={handleSubmit}
-            className="text-sm px-3 py-1 bg-primary text-white rounded hover:bg-primary-dark"
-          >
-            创建
-          </button>
+        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          {statusLine}
+          {!note && content.trim() && (
+            <button
+              onClick={handleSubmit}
+              className="ml-2 px-2 py-0.5 text-xs bg-[#0077B6] text-white rounded hover:bg-[#005f8c] transition-colors"
+            >
+              提交
+            </button>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   )
 }
 

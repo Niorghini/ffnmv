@@ -1,32 +1,34 @@
 /**
- * NoteList —— 中栏：搜索 + 状态筛选 + 虚拟滚动笔记列表
- * - 状态：all / pending / completed
- * - 搜索：按 content 过滤
- * - 行高 56px
+ * NoteList —— v0.7.0 风格笔记卡片列表
+ * - 在左栏 Editor 下方
+ * - 状态过滤 + 标签过滤 + 搜索过滤（来自 useNotesStore）
+ * - 状态切换 + 软删 按钮
+ * - 用 useVirtualizer 但 v0.7.0 的卡片更高 + 间距更大
  */
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Circle, Trash2, Plus } from 'lucide-react'
+import { CheckCircle2, Circle, Trash2 } from 'lucide-react'
 import { useNotesStore } from '@/stores/useNotesStore'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { notesRepo } from '@/repositories/notesRepo'
 import { useVirtualizer } from '@/hooks/useVirtualizer'
-import SearchBar from './SearchBar'
-import StatusFilter from './StatusFilter'
 
-const ROW_HEIGHT = 56
+const ROW_HEIGHT = 96
 
-const NoteList = ({ activeId, onSelect, onCreateNew }) => {
-  const { notes, statusFilter, searchQuery, setStatusFilter, setSearchQuery, load, activeTagId } = useNotesStore()
+const NoteList = ({ activeId, onSelect, refreshKey }) => {
+  const { notes, statusFilter, searchQuery, activeTagId, setStatusFilter, setSearchQuery, load, resetFilters } = useNotesStore()
   const { tags, load: loadTags } = useTagsStore()
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [, setTick] = useState(0)
 
   useEffect(() => {
     load()
     loadTags()
+  }, [load, loadTags])
+
+  useEffect(() => {
     const handler = () => {
       load()
       loadTags()
-      setRefreshKey((k) => k + 1)
+      setTick((k) => k + 1)
     }
     window.addEventListener('data-updated', handler)
     return () => window.removeEventListener('data-updated', handler)
@@ -47,8 +49,6 @@ const NoteList = ({ activeId, onSelect, onCreateNew }) => {
     rowHeight: ROW_HEIGHT,
   })
 
-  const tagByName = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
-
   const handleToggleStatus = async (e, n) => {
     e.stopPropagation()
     const next = n.status === 'completed' ? 'pending' : 'completed'
@@ -57,21 +57,24 @@ const NoteList = ({ activeId, onSelect, onCreateNew }) => {
 
   const handleDelete = async (e, n) => {
     e.stopPropagation()
-    if (!confirm('确定删除这条记录？30 天内可在回收站恢复。')) return
+    if (!confirm('确定删除？30 天内可在回收站恢复。')) return
     await notesRepo.softDelete(n.id)
   }
 
   return (
-    <div className="flex flex-col h-full bg-bg-card">
-      <div className="p-3 border-b border-gray-200 space-y-2">
-        <SearchBar value={searchQuery} onChange={setSearchQuery} />
-        <StatusFilter value={statusFilter} onChange={setStatusFilter} />
-      </div>
-
-      <div ref={containerRef} className="flex-1 overflow-y-auto" data-testid="note-list">
+    <section className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {(statusFilter !== 'all' || searchQuery || activeTagId) && (
+        <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100 flex items-center justify-between">
+          <span>共 {filtered.length} 条</span>
+          <button onClick={resetFilters} className="text-[#0077B6] hover:underline">
+            清除筛选
+          </button>
+        </div>
+      )}
+      <div ref={containerRef} className="overflow-y-auto" style={{ maxHeight: '60vh' }}>
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 text-sm">
-            {notes.length === 0 ? '还没有笔记，从右栏写下第一条' : '没有匹配的笔记'}
+          <div className="py-16 text-center text-gray-400 text-sm">
+            {notes.length === 0 ? '还没有笔记，从上方写下第一条' : '没有匹配的笔记'}
           </div>
         ) : (
           <div style={{ height: totalHeight, position: 'relative' }}>
@@ -93,16 +96,7 @@ const NoteList = ({ activeId, onSelect, onCreateNew }) => {
           </div>
         )}
       </div>
-
-      <button
-        onClick={onCreateNew}
-        className="absolute bottom-6 right-6 w-12 h-12 rounded-full bg-primary text-white shadow-lg flex items-center justify-center hover:bg-primary-dark"
-        title="新建笔记"
-        aria-label="新建笔记"
-      >
-        <Plus size={20} />
-      </button>
-    </div>
+    </section>
   )
 }
 
@@ -112,34 +106,34 @@ const NoteRow = ({ note, active, onClick, onToggleStatus, onDelete }) => {
     <div
       onClick={onClick}
       style={{ height: ROW_HEIGHT }}
-      className={`flex items-start gap-2 px-4 py-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-        active ? 'bg-primary/5 border-l-2 border-l-primary' : ''
+      className={`flex items-start gap-2 px-4 py-3 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50 ${
+        active ? 'bg-blue-50/50' : ''
       }`}
     >
       <button
         onClick={onToggleStatus}
-        className="mt-0.5 text-gray-400 hover:text-primary"
+        className="mt-0.5 text-gray-400 hover:text-[#0077B6] transition-colors"
         aria-label="切换状态"
       >
         {note.status === 'completed' ? (
-          <CheckCircle2 size={16} className="text-primary" />
+          <CheckCircle2 size={18} className="text-green-500" />
         ) : (
-          <Circle size={16} />
+          <Circle size={18} />
         )}
       </button>
       <div className="flex-1 min-w-0">
         <div
-          className={`text-sm whitespace-nowrap overflow-hidden text-ellipsis ${
-            note.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-800'
+          className={`text-sm leading-relaxed line-clamp-2 break-words ${
+            note.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-700'
           }`}
         >
           {preview}
         </div>
-        <div className="text-xs text-gray-400 mt-0.5">{formatTime(note.created_at)}</div>
+        <div className="text-xs text-gray-400 mt-1">{formatTime(note.created_at)}</div>
       </div>
       <button
         onClick={onDelete}
-        className="text-gray-300 hover:text-danger opacity-0 group-hover:opacity-100"
+        className="text-gray-300 hover:text-red-500 transition-colors"
         aria-label="删除"
       >
         <Trash2 size={14} />

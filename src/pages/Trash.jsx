@@ -1,5 +1,6 @@
 /**
  * Trash 页面：30 天内软删除的笔记 + 恢复 / 永久删除
+ * v0.7.0 风格：白底卡片、圆角
  */
 import { useEffect, useState } from 'react'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
@@ -57,18 +58,18 @@ const Trash = () => {
         </div>
         <button
           onClick={handleCleanup}
-          className="text-xs px-3 py-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50"
+          className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
         >
           立即清理过期
         </button>
       </header>
       <div className="max-w-3xl mx-auto p-6">
         {notes.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-sm">回收站是空的</div>
+          <div className="py-16 text-center text-gray-400 text-sm">回收站是空的</div>
         ) : (
           <div className="space-y-2">
             {notes.map((n) => (
-              <div key={n.id} className="bg-white p-4 rounded border border-gray-200 flex items-start gap-3">
+              <div key={n.id} className="bg-white p-4 rounded-lg shadow-sm flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-gray-700 line-through">{n.content.slice(0, 200)}</div>
                   <div className="text-xs text-gray-400 mt-1">
@@ -77,14 +78,14 @@ const Trash = () => {
                 </div>
                 <button
                   onClick={() => handleRestore(n.id)}
-                  className="px-3 py-1 text-xs text-primary border border-primary rounded hover:bg-primary/5"
+                  className="px-3 py-1 text-xs text-[#0077B6] border border-[#0077B6] rounded-lg hover:bg-blue-50 transition-colors"
                 >
                   <RotateCcw size={12} className="inline mr-1" />
                   恢复
                 </button>
                 <button
                   onClick={() => handleHardDelete(n.id)}
-                  className="px-3 py-1 text-xs text-danger border border-danger rounded hover:bg-danger-bg"
+                  className="px-3 py-1 text-xs text-red-600 border border-red-500 rounded-lg hover:bg-red-50 transition-colors"
                 >
                   <Trash2 size={12} className="inline mr-1" />
                   永久删
