@@ -19,7 +19,7 @@ import logoUrl from '/logo.png'
 
 const MainApp = () => {
   const { user } = useAuthStore()
-  const { activeId, setActiveId, searchQuery, setSearchQuery, load } = useNotesStore()
+  const { activeId, setActiveId, setActiveTagId, searchQuery, setSearchQuery, load } = useNotesStore()
   const [activeNote, setActiveNote] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -85,6 +85,7 @@ const MainApp = () => {
               activeId={activeId}
               onSelect={handleSelect}
               refreshKey={refreshKey}
+              onTagClick={(tagId) => setActiveTagId(tagId === activeTagId ? null : tagId)}
             />
           </div>
           <div className="lg:w-80 space-y-4 shrink-0">
