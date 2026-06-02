@@ -9,6 +9,10 @@ export default {
       colors: {
         primary: '#2F8C5C',
         'primary-dark': '#1E6640',
+        danger: '#DC2626',
+        'danger-bg': '#FEF2F2',
+        warning: '#D97706',
+        'warning-bg': '#FFFBEB',
         bg: {
           main: '#F5F6F7',
           card: '#FFFFFF',

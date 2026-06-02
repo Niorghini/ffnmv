@@ -2,3 +2,13 @@ node_modules/
 .DS_Store
 .vite/
 dist/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# supabase
+supabase/.branches
+supabase/.temp
+supabase/.env
