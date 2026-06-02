@@ -6,7 +6,6 @@
  * - 右栏 lg:w-80：Sidebar（sync + 状态筛选 + 标签 + 操作）
  */
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { db } from '@/lib/db'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -20,7 +19,7 @@ import logoUrl from '/logo.png'
 
 const MainApp = () => {
   const { user } = useAuthStore()
-  const { activeId, setActiveId, setActiveTagId, load, activeTagId, statusFilter, searchQuery } = useNotesStore()
+  const { activeId, setActiveId, searchQuery, setSearchQuery, load } = useNotesStore()
   const [activeNote, setActiveNote] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -81,12 +80,11 @@ const MainApp = () => {
               onSaved={handleSaved}
               onCancel={() => setActiveId(null)}
             />
-            <SearchBarWrapper />
+            <SearchBar value={searchQuery} onChange={setSearchQuery} />
             <NoteList
               activeId={activeId}
               onSelect={handleSelect}
               refreshKey={refreshKey}
-              onCountChange={() => {}}
             />
           </div>
           <div className="lg:w-80 space-y-4 shrink-0">
@@ -98,19 +96,5 @@ const MainApp = () => {
     </div>
   )
 }
-
-// SearchBar + 状态筛选 一行
-const SearchBarWrapper = () => {
-  const { searchQuery, setSearchQuery, statusFilter, setStatusFilter } = useNotesStore()
-  return (
-    <div className="space-y-2">
-      <SearchBar value={searchQuery} onChange={setSearchQuery} />
-      <StatusFilter value={statusFilter} onChange={setStatusFilter} />
-    </div>
-  )
-}
-
-// 把 StatusFilter 留在独立文件以便测试
-import StatusFilter from '@/components/StatusFilter'
 
 export default MainApp
