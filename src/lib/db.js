@@ -8,15 +8,15 @@
 import Dexie from 'dexie'
 
 const DB_NAME = 'ffn_db'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 export const db = new Dexie(DB_NAME)
 
 db.version(DB_VERSION)
   .stores({
     notes: 'id, status, created_at, updated_at, sync_status, deleted_at',
-    tags: 'id, name, sync_status',
-    note_tags: '[note_id+tag_id], note_id, tag_id',
+    tags: 'id, name, sync_status, deleted_at',
+    note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at',
     sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
     sync_metadata: 'key',
     conflicts: 'id, entity_type, entity_id, created_at',

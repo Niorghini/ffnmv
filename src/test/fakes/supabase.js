@@ -31,7 +31,8 @@ export const createFakeSupabase = (overrides = {}) => {
       return errResult()
     }
     try {
-      return await fn(...args)
+      const result = await fn(...args)
+      return okResult(result)
     } catch (e) {
       return errResult(e.message)
     }
@@ -158,6 +159,9 @@ export const createFakeSupabase = (overrides = {}) => {
     from(name) {
       if (!state.tables[name]) state.tables[name] = new Map()
       return table(name)
+    },
+    removeChannel(ch) {
+      state.realtimeHandlers = state.realtimeHandlers.filter((h) => h.channel !== ch?.topic)
     },
     channel(name) {
       const handlers = []

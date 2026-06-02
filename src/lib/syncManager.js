@@ -292,7 +292,7 @@ export class SyncManager {
   }
 
   scheduleRealtimeReconnect() {
-    if (this._reconnectTimer) return
+    if (this._reconnectTimer) clearTimeout(this._reconnectTimer)
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null
       this.setupRealtime()
@@ -348,7 +348,7 @@ export class SyncManager {
   }
 
   scheduleRetry() {
-    if (this._retryTimer) return
+    if (this._retryTimer) clearTimeout(this._retryTimer)
     this._retryTimer = setTimeout(() => {
       this._retryTimer = null
       this.fullSync()
