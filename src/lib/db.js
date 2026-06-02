@@ -73,30 +73,66 @@ export const detectAndPurgeLegacy = async () => {
 
 /**
  * 打开数据库并确保 schema 就绪
- * - 首次开失败（schema 不兼容 / 卡在 broken 状态）→ 自动清掉 DB 重开一次
+ * - 失败时清掉 DB 后**用全新的 Dexie 实例**重开（同一个实例复用会带坏内部状态）
+ * - 重试 2 次
+ * - 都失败就抛出（App.jsx 的 catch 会处理 UI）
  */
 const deleteDb = () =>
-  new Promise((resolve, reject) => {
-    if (db.isOpen()) db.close()
+  new Promise((resolve) => {
+    try {
+      if (db.isOpen()) db.close()
+    } catch {}
     const req = indexedDB.deleteDatabase(DB_NAME)
     req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
-    req.onblocked = () => reject(new Error('IndexedDB 删除被其他标签页阻塞，请关闭其他标签后刷新'))
+    req.onerror = () => resolve() // 失败也继续，让 open 失败再处理
+    req.onblocked = () => resolve() // 同上
   })
+
+const makeFreshDb = () => {
+  // 新 Dexie 实例，避开旧实例的 internal state 污染
+  const fresh = new Dexie(DB_NAME)
+  fresh.version(DB_VERSION).stores({
+    notes: 'id, status, created_at, updated_at, sync_status, deleted_at',
+    tags: 'id, name, sync_status, deleted_at',
+    note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at, sync_status',
+    sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
+    sync_metadata: 'key',
+    conflicts: 'id, entity_type, entity_id, created_at',
+    cache: 'key, expires_at',
+  }).upgrade(async (tx) => {
+    if (tx.db.objectStoreNames.contains('memos')) {
+      tx.db.deleteObjectStore('memos')
+    }
+  })
+  return fresh
+}
 
 export const openDb = async () => {
   await detectAndPurgeLegacy()
   if (db.isOpen()) return db
+  // 第一次尝试：用 module-level db
   try {
     await db.open()
     return db
   } catch (err) {
-    // 自愈：清掉旧 DB 后重建（v3→v4 升级失败 / 中间状态卡住 / 字段索引错乱）
-    console.warn('[db] open failed, purging and retrying:', err)
-    await deleteDb()
-    await db.open()
-    return db
+    console.warn('[db] module-level db.open() failed, self-healing:', err?.message)
   }
+  // 自愈：删 DB + 全新实例
+  await deleteDb()
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const fresh = makeFreshDb()
+      await fresh.open()
+      // 替换 module-level db
+      Object.assign(db, fresh)
+      console.info(`[db] self-healed on attempt ${attempt}`)
+      return db
+    } catch (err) {
+      console.warn(`[db] self-heal attempt ${attempt} failed:`, err?.message)
+      await deleteDb()
+    }
+  }
+  throw new Error('数据库无法打开。请清除浏览器站点数据后重试。')
 }
 
 // 辅助：当前时间 ISO 字符串
