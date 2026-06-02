@@ -73,13 +73,30 @@ export const detectAndPurgeLegacy = async () => {
 
 /**
  * 打开数据库并确保 schema 就绪
+ * - 首次开失败（schema 不兼容 / 卡在 broken 状态）→ 自动清掉 DB 重开一次
  */
+const deleteDb = () =>
+  new Promise((resolve, reject) => {
+    if (db.isOpen()) db.close()
+    const req = indexedDB.deleteDatabase(DB_NAME)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+    req.onblocked = () => reject(new Error('IndexedDB 删除被其他标签页阻塞，请关闭其他标签后刷新'))
+  })
+
 export const openDb = async () => {
   await detectAndPurgeLegacy()
-  if (!db.isOpen()) {
+  if (db.isOpen()) return db
+  try {
     await db.open()
+    return db
+  } catch (err) {
+    // 自愈：清掉旧 DB 后重建（v3→v4 升级失败 / 中间状态卡住 / 字段索引错乱）
+    console.warn('[db] open failed, purging and retrying:', err)
+    await deleteDb()
+    await db.open()
+    return db
   }
-  return db
 }
 
 // 辅助：当前时间 ISO 字符串
