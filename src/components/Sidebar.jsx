@@ -33,6 +33,9 @@ const Sidebar = ({ onSync }) => {
   }, [loadTags, loadNotes])
 
   const filteredTags = tags.filter((t) => t.name.toLowerCase().includes(tagQuery.toLowerCase()))
+  // 只显示有活跃 link 的 tag（counts.get(t.id) > 0）
+  const activeTags = filteredTags.filter((t) => (counts.get(t.id) || 0) > 0)
+  const filteredActiveTags = activeTags
   const totalCount = notes.length
   const pendingCount = notes.filter((n) => n.status === 'pending' && !n.archived_at).length
   const completedCount = notes.filter((n) => n.status === 'completed' && !n.archived_at).length
@@ -79,11 +82,11 @@ const Sidebar = ({ onSync }) => {
         </div>
       </section>
 
-      {/* 标签 */}
+      {/* 标签：只显示有活跃 link 的（即至少被一条笔记引用） */}
       <section className="bg-white rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium text-gray-700">标签</h3>
-          <span className="text-xs text-gray-400">{tags.length}</span>
+          <span className="text-xs text-gray-400">{activeTags.length}</span>
         </div>
         <div className="flex items-center gap-1.5 px-2 py-1.5 bg-bg-main rounded mb-2">
           <Search size={12} className="text-gray-400" />
@@ -101,12 +104,14 @@ const Sidebar = ({ onSync }) => {
           )}
         </div>
         <div className="space-y-0.5 max-h-64 overflow-y-auto">
-          {tags.length === 0 ? (
+          {activeTags.length === 0 ? (
             <p className="text-xs text-gray-400 py-3 text-center">
-              在笔记中使用 <code className="text-[#0077B6]">#标签</code> 创建
+              {tags.length === 0
+                ? <>在笔记中使用 <code className="text-[#0077B6]">#标签</code> 创建</>
+                : '暂无在用标签，去「设置」清理未用标签'}
             </p>
           ) : (
-            filteredTags.map((t) => (
+            filteredActiveTags.map((t) => (
               <TagRow
                 key={t.id}
                 tag={t}
