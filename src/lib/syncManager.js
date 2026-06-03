@@ -156,8 +156,56 @@ export class SyncManager {
       await this.db.sync_metadata.put({ key: lastKey, value: maxUpdatedAt })
     }
 
+    // 1.5 跨设备硬删除传播：拉全量 cloud ids，删本地有但云端没有的
+    // 必须在 push 之前跑——否则 push 会把云端已删的 X upsert 回来，cleanup 就查不到了
+    await this._cleanupRemoteHardDeletions(entity)
+
     // 2. 推送本地待同步
     await this._pushLocalChanges(entity)
+  }
+
+  /**
+   * 跨设备硬删除传播
+   * - 拉云端当前 user 的全量 ids
+   * - 跟本地所有行比对，删「云端没有但本地还有」的
+   * - 让 hardDelete 在 A 端的效果传播到所有其他设备
+   * - 跳过 pending/failed 行（即将被 push，删了会丢本地未同步的改动）
+   * - 跳过软删 notes（deleted_at != null 是 trash 里的，不是硬删）
+   * - 网络错 → warn 不阻塞 sync 其他步骤
+   */
+  async _cleanupRemoteHardDeletions(entity) {
+    if (!['notes', 'tags', 'note_tags'].includes(entity)) return
+    try {
+      const { data: cloudList, error } = await this.supabase
+        .from(entity)
+        .select('id')
+      if (error) throw error
+      const cloudIds = new Set((cloudList || []).map((r) => r.id))
+
+      const localRows = await this.db[entity].toArray()
+      let removed = 0
+      for (const local of localRows) {
+        if (cloudIds.has(local.id)) continue
+        // pending/failed：让 push 处理，删了会丢本地未同步改动
+        if (local.sync_status === 'pending' || local.sync_status === 'failed') continue
+        // notes 软删：trash 里的笔记，不算硬删
+        if (entity === 'notes' && local.deleted_at) continue
+        // 真硬删：物理删本地
+        if (entity === 'note_tags') {
+          await this.db.note_tags.delete([local.note_id, local.tag_id])
+        } else {
+          await this.db[entity].delete(local.id)
+        }
+        removed++
+      }
+      if (removed > 0) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity } }))
+        }
+      }
+    } catch (e) {
+      console.warn(`[sync] remote-delete cleanup for ${entity} failed:`, e?.message || e)
+    }
   }
 
   // ─── 推送本地变更 ───────────────────────────────────────────────────

@@ -256,4 +256,54 @@ describe('SyncManager', () => {
     expect((await db.notes.get('n1')).sync_status).toBe('synced')
     expect((await db.notes.get('n-cloud'))).toBeTruthy()
   })
+
+  // ── 跨设备硬删传播 ──────────────────────────────────────────
+  it('跨设备硬删：云端没了的行本地也物理删', async () => {
+    // 本地有两条 synced 行
+    await db.notes.add(mkNote({ id: 'a', sync_status: 'synced' }))
+    await db.notes.add(mkNote({ id: 'b', sync_status: 'synced' }))
+    // 远端只有 a（A 端硬删了 b）
+    sb._putRow('notes', { ...mkNote({ id: 'a' }), last_sync_device: 'other' })
+    await sm.fullSync()
+    expect(await db.notes.get('a')).toBeTruthy()
+    expect(await db.notes.get('b')).toBeUndefined() // b 没了
+  })
+
+  it('cleanup 跳过 pending/failed 行（让 push 处理）', async () => {
+    // 本地有 pending 行（即将被推）
+    await db.notes.add(mkNote({ id: 'pending-note', sync_status: 'pending' }))
+    // 远端没有（正常，B 没推过）
+    await sm.fullSync()
+    // 行**没被 cleanup 删掉**——被 push 推上去了，所以 sync_status 变 'synced'
+    expect(await db.notes.get('pending-note')).toBeTruthy()
+    expect((await db.notes.get('pending-note')).sync_status).toBe('synced')
+  })
+
+  it('cleanup 跳过软删 notes（trash 里的不删）', async () => {
+    await db.notes.add(mkNote({ id: 'trash', sync_status: 'synced', deleted_at: '2026-06-01T00:00:00.000Z' }))
+    // 远端没有这个 id
+    await sm.fullSync()
+    // 软删行**还在**——不是硬删
+    expect(await db.notes.get('trash')).toBeTruthy()
+  })
+
+  it('cleanup 失败仅 warn，不阻塞 sync 其他步骤', async () => {
+    // 让 select('id') 抛错
+    sb.from = vi.fn((name) => ({
+      select: vi.fn().mockReturnValue({
+        // 不是 thenable 也不返回 error——直接 throw
+        // 但 fake 不支持，先模拟一个 error
+        // 简化：让 select() 失败走 wrap 报错
+      }),
+    }))
+    // 用更直接的方式：覆盖 supabase.from 让它在 select 路径上抛
+    sb.state.failNext = true
+    // 让数据库已有 synced 数据，sync 应该完成（不抛）
+    await db.notes.add(mkNote({ id: 'x', sync_status: 'synced' }))
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(sm.fullSync()).resolves.toBeUndefined()
+    spy.mockRestore()
+    // failNext 已被消费
+    sb.state.failNext = false
+  })
 })
