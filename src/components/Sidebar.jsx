@@ -1,21 +1,17 @@
 /**
- * Sidebar —— 右栏：sync + 状态筛选 + 标签 + 账号操作
+ * Sidebar —— 右栏：状态筛选 + 标签 + 操作
  * 风格对齐 v0.7.0：白底卡片、rounded-lg/shadow-sm、space-y-4
+ * （同步/账号入口已迁至顶部 UserMenu）
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Trash2, Settings, LogOut, Hash, Inbox, Tag as TagIcon, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
+import { Trash2, Settings, Hash, Tag, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { useNotesStore } from '@/stores/useNotesStore'
-import { useAuthStore } from '@/stores/useAuthStore'
-import { useSyncStore } from '@/stores/useSyncStore'
-import { db } from '@/lib/db'
 
-const Sidebar = ({ onSync }) => {
-  const { user, signOut } = useAuthStore()
+const Sidebar = () => {
   const { tags, counts, load: loadTags } = useTagsStore()
   const { activeTagId, setActiveTagId, notes, setStatusFilter, statusFilter, load: loadNotes } = useNotesStore()
-  const { status, pending, online, lastSyncAt } = useSyncStore()
   const [tagQuery, setTagQuery] = useState('')
 
   useEffect(() => {
@@ -42,19 +38,6 @@ const Sidebar = ({ onSync }) => {
 
   return (
     <>
-      {/* 同步状态卡片 */}
-      <section className="bg-white rounded-lg shadow-sm p-3">
-        <SyncCard
-          status={status}
-          pending={pending}
-          online={online}
-          lastSyncAt={lastSyncAt}
-          onSync={onSync}
-          onSignOut={signOut}
-          email={user?.email}
-        />
-      </section>
-
       {/* 状态筛选 */}
       <section className="bg-white rounded-lg shadow-sm p-4">
         <div className="flex items-center gap-1.5 mb-3">
@@ -89,7 +72,10 @@ const Sidebar = ({ onSync }) => {
       {/* 标签：只显示有活跃 link 的（即至少被一条笔记引用） */}
       <section className="bg-white rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-gray-700">标签</h3>
+          <div className="flex items-center gap-1.5">
+            <Tag size={14} className="text-gray-500" />
+            <h3 className="text-sm font-medium text-gray-700">标签</h3>
+          </div>
           <span className="text-xs text-gray-400">{activeTags.length}</span>
         </div>
         <div className="flex items-center gap-1.5 px-2 py-1.5 bg-bg-main rounded mb-2">
@@ -176,49 +162,5 @@ const TagRow = ({ tag, count, active, onClick }) => (
     <span className="text-xs text-gray-400">{count}</span>
   </button>
 )
-
-const SyncCard = ({ status, pending, online, lastSyncAt, onSync, onSignOut, email }) => {
-  const badge = (() => {
-    if (!online) return { dot: 'bg-gray-300', text: '离线', color: 'text-gray-500' }
-    if (status === 'syncing') return { dot: 'bg-[#0077B6] animate-pulse', text: '同步中', color: 'text-[#0077B6]' }
-    if (status === 'error') return { dot: 'bg-red-500', text: '同步失败', color: 'text-red-500' }
-    if (pending > 0) return { dot: 'bg-amber-500', text: `${pending} 条待同步`, color: 'text-amber-600' }
-    return { dot: 'bg-green-500', text: '已同步', color: 'text-green-600' }
-  })()
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`} />
-          <span className={`text-xs ${badge.color}`}>{badge.text}</span>
-          {lastSyncAt && online && status !== 'syncing' && (
-            <span className="text-xs text-gray-400 truncate">
-              · {new Date(lastSyncAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-        </div>
-        <button
-          onClick={onSync}
-          className="p-1 text-gray-400 hover:text-[#0077B6] transition-colors"
-          title="立即同步"
-          aria-label="立即同步"
-        >
-          <RefreshCw size={14} />
-        </button>
-      </div>
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-        <span className="text-xs text-gray-500 truncate">{email}</span>
-        <button
-          onClick={onSignOut}
-          className="text-xs text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1"
-        >
-          <LogOut size={12} />
-          登出
-        </button>
-      </div>
-    </div>
-  )
-}
 
 export default Sidebar

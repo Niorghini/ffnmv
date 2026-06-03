@@ -14,6 +14,7 @@ import Editor from '@/components/Editor'
 import SearchBar from '@/components/SearchBar'
 import NoteList from '@/components/NoteList'
 import Sidebar from '@/components/Sidebar'
+import UserMenu from '@/components/UserMenu'
 import { ConflictBanner } from '@/components/ConflictDialog'
 import logoUrl from '/logo.png'
 
@@ -57,7 +58,7 @@ const MainApp = () => {
               <p className="text-sm text-gray-400">发布的想法都很牛！</p>
             </div>
             {user && (
-              <div className="text-xs text-gray-400">{user.email}</div>
+              <UserMenu onSync={handleSync} />
             )}
           </div>
         </header>
@@ -79,7 +80,7 @@ const MainApp = () => {
             />
           </div>
           <div className="lg:w-80 space-y-4 shrink-0">
-            <Sidebar onSync={handleSync} onConflictClick={() => {}} />
+            <Sidebar onConflictClick={() => {}} />
           </div>
         </div>
       </div>
