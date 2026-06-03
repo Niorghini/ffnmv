@@ -142,13 +142,13 @@ const NoteRow = ({
     }`}
   >
     <div
-      className={`text-sm leading-relaxed line-clamp-2 break-words ${
+      className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
         note.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-800'
       }`}
     >
       {renderContentWithTags(note.content, tagByName, onTagClick)}
     </div>
-    <div className="flex items-end justify-between mt-2">
+    <div className="flex items-end justify-between mt-3">
       <span className="text-xs text-gray-400">{formatTime(note.created_at)}</span>
       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
