@@ -175,17 +175,19 @@ export class SyncManager {
    */
   async _cleanupRemoteHardDeletions(entity) {
     if (!['notes', 'tags', 'note_tags'].includes(entity)) return
+    // note_tags 没 id 列（复合主键 note_id+tag_id），用 note_id 当唯一键
+    const idCol = entity === 'note_tags' ? 'note_id' : 'id'
     try {
       const { data: cloudList, error } = await this.supabase
         .from(entity)
-        .select('id')
+        .select(idCol)
       if (error) throw error
-      const cloudIds = new Set((cloudList || []).map((r) => r.id))
+      const cloudIds = new Set((cloudList || []).map((r) => r[idCol]))
 
       const localRows = await this.db[entity].toArray()
       let removed = 0
       for (const local of localRows) {
-        if (cloudIds.has(local.id)) continue
+        if (cloudIds.has(local[idCol])) continue
         // pending/failed：让 push 处理，删了会丢本地未同步改动
         if (local.sync_status === 'pending' || local.sync_status === 'failed') continue
         // notes 软删：trash 里的笔记，不算硬删

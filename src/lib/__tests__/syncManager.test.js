@@ -306,4 +306,36 @@ describe('SyncManager', () => {
     // failNext 已被消费
     sb.state.failNext = false
   })
+
+  it('note_tags cleanup 用 note_id 当唯一键（note_tags 没 id 列）', async () => {
+    // 本地有 1 个 note_tags link
+    await db.note_tags.add({
+      note_id: 'note-A',
+      tag_id: 'tag-X',
+      created_at: '2026-01-01T00:00:00.000Z',
+      version: 1,
+      sync_status: 'synced',
+    })
+    // 远端没有这个 note 的任何 link（A 端硬删了 note 连带 link）
+    await sm.fullSync()
+    // 本地 link 被清掉
+    expect(await db.note_tags.get(['note-A', 'tag-X'])).toBeUndefined()
+  })
+
+  it('note_tags cleanup note 还在云端：link 保留', async () => {
+    await db.note_tags.add({
+      note_id: 'note-A',
+      tag_id: 'tag-X',
+      created_at: '2026-01-01T00:00:00.000Z',
+      version: 1,
+      sync_status: 'synced',
+    })
+    sb._putRow('note_tags', {
+      note_id: 'note-A', tag_id: 'tag-X',
+      user_id: 'u1', created_at: '2026-01-01T00:00:00.000Z',
+      version: 1, last_sync_device: 'other',
+    })
+    await sm.fullSync()
+    expect(await db.note_tags.get(['note-A', 'tag-X'])).toBeTruthy()
+  })
 })
