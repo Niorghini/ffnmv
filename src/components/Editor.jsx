@@ -108,7 +108,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
           {tags.map((t) => (
             <span
               key={t}
-              className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-[#0077B6] rounded"
+              className="text-xs px-1.5 py-0.5 bg-blue-50 text-[#0077B6] rounded"
             >
               #{t}
             </span>

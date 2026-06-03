@@ -195,7 +195,7 @@ const NoteRow = ({
       </div>
       <div className="flex items-end justify-between mt-3">
         <span className="text-xs text-gray-400">{formatTime(note.created_at)}</span>
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={onToggleStatus}
             className="text-gray-400 hover:text-[#0077B6] transition-colors"
