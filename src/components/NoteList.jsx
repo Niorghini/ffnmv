@@ -1,20 +1,21 @@
 /**
- * NoteList —— v0.7.0 风格笔记卡片列表
- * - 在左栏 Editor 下方
- * - 状态过滤 + 标签过滤 + 搜索过滤（来自 useNotesStore）
- * - 状态切换 + 软删 按钮
- * - 行内显示 tag chips（最多 2 个 + "…N"）
- * - 用 useVirtualizer 但 v0.7.0 的卡片更高 + 间距更大
+ * NoteList —— 笔记卡片列表
+ * - 卡片样式: 内容(带 tag inline 在原位置) + 时间 + hover 揭示图标
+ * - 状态过滤 + 标签过滤 + 搜索过滤
+ * - 行内 tag chip 可点击筛选
+ * - useVirtualizer 虚拟滚动
  */
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Circle, Trash2, Hash } from 'lucide-react'
+import { CheckCircle2, Circle, Trash2, Pencil } from 'lucide-react'
 import { useNotesStore } from '@/stores/useNotesStore'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { notesRepo } from '@/repositories/notesRepo'
 import { useVirtualizer } from '@/hooks/useVirtualizer'
 import { db } from '@/lib/db'
 
-const ROW_HEIGHT = 116
+const ROW_HEIGHT = 124
+
+const TAG_RE = /#([\w一-鿿-]+)/g
 
 const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
   const { notes, statusFilter, searchQuery, activeTagId, setStatusFilter, setSearchQuery, load, resetFilters } = useNotesStore()
@@ -46,17 +47,6 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }, [notes, statusFilter, searchQuery])
 
-  // 算每个笔记的活跃 tag（活跃 = link.deleted_at 为 null）
-  const noteToTags = useMemo(() => {
-    const map = new Map()
-    if (tags.length === 0) return map
-    const tagById = new Map(tags.map((t) => [t.id, t]))
-    let links = []
-    // 同步读 + 在 effect 里 cache
-    return map
-  }, [tags])
-
-  // 异步算 note→tags（需要 await db.note_tags）
   const [linkMap, setLinkMap] = useState(new Map())
   useEffect(() => {
     let cancelled = false
@@ -96,15 +86,22 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
     await notesRepo.softDelete(n.id)
   }
 
-  const handleChipClick = (e, tagId) => {
+  const handleEdit = (e, n) => {
     e.stopPropagation()
-    onTagClick?.(tagId)
+    // TODO 编辑功能下一步实现；现在跟点行一样：选笔记载入编辑区
+    onSelect(n.id)
   }
 
+  const tagByName = useMemo(() => {
+    const m = new Map()
+    for (const t of tags) m.set(t.name, t)
+    return m
+  }, [tags])
+
   return (
-    <section className="bg-white rounded-lg shadow-sm overflow-hidden">
+    <section className="space-y-2">
       {(statusFilter !== 'all' || searchQuery || activeTagId) && (
-        <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-3 py-2 text-xs text-gray-500 bg-white rounded-lg shadow-sm flex items-center justify-between">
           <span>共 {filtered.length} 条</span>
           <button onClick={resetFilters} className="text-[#0077B6] hover:underline">
             清除筛选
@@ -113,7 +110,7 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
       )}
       <div ref={containerRef} className="overflow-y-auto" style={{ maxHeight: '60vh' }}>
         {filtered.length === 0 ? (
-          <div className="py-16 text-center text-gray-400 text-sm">
+          <div className="py-16 text-center bg-white rounded-lg shadow-sm text-gray-400 text-sm">
             {notes.length === 0 ? '还没有笔记，从上方写下第一条' : '没有匹配的笔记'}
           </div>
         ) : (
@@ -122,9 +119,6 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
               {visible.map((i) => {
                 const n = filtered[i]
                 const tagIds = linkMap.get(n.id) || []
-                const noteTags = tagIds
-                  .map((id) => tags.find((t) => t.id === id))
-                  .filter(Boolean)
                 return (
                   <NoteRow
                     key={n.id}
@@ -132,9 +126,11 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
                     active={activeId === n.id}
                     onClick={() => onSelect(n.id)}
                     onToggleStatus={(e) => handleToggleStatus(e, n)}
+                    onEdit={(e) => handleEdit(e, n)}
                     onDelete={(e) => handleDelete(e, n)}
-                    onTagClick={handleChipClick}
-                    noteTags={noteTags}
+                    onTagClick={onTagClick}
+                    tagByName={tagByName}
+                    tagIds={tagIds}
                   />
                 )
               })}
@@ -146,65 +142,110 @@ const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
   )
 }
 
-const NoteRow = ({ note, active, onClick, onToggleStatus, onDelete, onTagClick, noteTags = [] }) => {
-  const preview = note.content.replace(/#[\w一-鿿-]+/g, '').trim().slice(0, 80) || note.content.slice(0, 80)
-  const visible = noteTags.slice(0, 2)
-  const hidden = noteTags.length - visible.length
+const NoteRow = ({
+  note,
+  active,
+  onClick,
+  onToggleStatus,
+  onEdit,
+  onDelete,
+  onTagClick,
+  tagByName,
+  tagIds,
+}) => {
   return (
     <div
       onClick={onClick}
       style={{ height: ROW_HEIGHT }}
-      className={`flex items-start gap-2 px-4 py-2.5 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50 ${
-        active ? 'bg-blue-50/50' : ''
+      className={`group relative bg-white rounded-lg shadow-sm px-4 py-3 mb-2 cursor-pointer transition-colors border ${
+        active ? 'border-[#0077B6]' : 'border-transparent hover:border-gray-200'
       }`}
     >
-      <button
-        onClick={onToggleStatus}
-        className="mt-0.5 text-gray-400 hover:text-[#0077B6] transition-colors"
-        aria-label="切换状态"
+      {/* 内容区：tag chip 保留在原文位置 */}
+      <div
+        className={`text-sm leading-relaxed line-clamp-2 break-words ${
+          note.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-800'
+        }`}
       >
-        {note.status === 'completed' ? (
-          <CheckCircle2 size={18} className="text-green-500" />
-        ) : (
-          <Circle size={18} />
-        )}
-      </button>
-      <div className="flex-1 min-w-0">
-        <div
-          className={`text-sm leading-snug line-clamp-2 break-words ${
-            note.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-700'
-          }`}
-        >
-          {preview}
-        </div>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          {visible.map((t) => (
-            <button
-              key={t.id}
-              onClick={(e) => onTagClick?.(e, t.id)}
-              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded text-gray-600 hover:text-[#0077B6] transition-colors"
-              style={{ background: `${t.color}20` }}
-              title={`筛选 #${t.name}`}
-            >
-              <Hash size={9} style={{ color: t.color }} />
-              {t.name}
-            </button>
-          ))}
-          {hidden > 0 && (
-            <span className="text-[10px] text-gray-400">+{hidden}</span>
-          )}
-          <span className="text-xs text-gray-400 ml-auto">{formatTime(note.created_at)}</span>
+        {renderContentWithTags(note.content, tagByName, onTagClick)}
+      </div>
+      {/* 底部：左时间 + 右 hover 图标 */}
+      <div className="absolute bottom-2 left-4 right-3 flex items-end justify-between">
+        <span className="text-xs text-gray-400">{formatTime(note.created_at)}</span>
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => onToggleStatus(e)}
+            className="text-gray-400 hover:text-[#0077B6] transition-colors"
+            aria-label="切换状态"
+            title="切换状态"
+          >
+            {note.status === 'completed' ? (
+              <CheckCircle2 size={16} className="text-green-500" />
+            ) : (
+              <Circle size={16} />
+            )}
+          </button>
+          <button
+            onClick={(e) => onEdit(e)}
+            className="text-gray-400 hover:text-[#0077B6] transition-colors"
+            aria-label="编辑"
+            title="编辑（下一步实现）"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            onClick={(e) => onDelete(e)}
+            className="text-gray-400 hover:text-red-500 transition-colors"
+            aria-label="删除"
+            title="删除"
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       </div>
-      <button
-        onClick={onDelete}
-        className="text-gray-300 hover:text-red-500 transition-colors"
-        aria-label="删除"
-      >
-        <Trash2 size={14} />
-      </button>
     </div>
   )
+}
+
+/**
+ * 渲染内容，tag chip 保留在原文位置（不脱出来）
+ * @param {string} content 原文
+ * @param {Map<string, {color: string}>} tagByName 名字→tag 实体映射
+ * @param {(e, tagId) => void} onTagClick chip 点击回调
+ */
+const renderContentWithTags = (content, tagByName, onTagClick) => {
+  const parts = []
+  let lastIndex = 0
+  let match
+  // 正则带 g flag 必须重置 lastIndex（每次调用都是新 RegExp 实例）
+  TAG_RE.lastIndex = 0
+  while ((match = TAG_RE.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={`t-${lastIndex}`}>{content.slice(lastIndex, match.index)}</span>)
+    }
+    const name = match[1]
+    const tag = tagByName.get(name)
+    const color = tag?.color || '#9CA3AF'
+    parts.push(
+      <button
+        key={`tag-${match.index}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (tag) onTagClick?.(e, tag.id)
+        }}
+        className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mx-0.5 transition-colors hover:opacity-80"
+        style={{ background: `${color}20`, color }}
+        title={tag ? `筛选 #${name}` : `#${name}（本地无实体）`}
+      >
+        #{name}
+      </button>,
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < content.length) {
+    parts.push(<span key="t-end">{content.slice(lastIndex)}</span>)
+  }
+  return parts
 }
 
 const formatTime = (iso) => {
