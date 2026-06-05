@@ -2,29 +2,19 @@
  * Trash 页面：30 天内软删除的笔记 + 恢复 / 永久删除
  * v0.7.0 风格：白底卡片、圆角
  */
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { notesRepo } from '@/repositories/notesRepo'
 import { runCleanup } from '@/lib/cleanup'
+import { useTrashStore } from '@/stores/useTrashStore'
 
 const Trash = () => {
-  const [notes, setNotes] = useState([])
-  const [refreshKey, setRefreshKey] = useState(0)
+  const { notes, load } = useTrashStore()
 
   useEffect(() => {
-    const load = async () => {
-      const all = await notesRepo.getAll({ includeDeleted: true })
-      setNotes(all.filter((n) => n.deleted_at))
-    }
     load()
-    const handler = () => {
-      load()
-      setRefreshKey((k) => k + 1)
-    }
-    window.addEventListener('data-updated', handler)
-    return () => window.removeEventListener('data-updated', handler)
-  }, [refreshKey])
+  }, [load])
 
   const handleRestore = async (id) => {
     await notesRepo.restore(id)

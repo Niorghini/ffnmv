@@ -154,6 +154,9 @@ export class SyncManager {
         .map((r) => r.updated_at)
         .reduce((m, t) => (t > m ? t : m), lastSyncAt)
       await this.db.sync_metadata.put({ key: lastKey, value: maxUpdatedAt })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity, source: 'pull' } }))
+      }
     }
 
     // 1.5 跨设备硬删除传播：拉全量 cloud ids，删本地有但云端没有的

@@ -16,26 +16,15 @@ import { db } from '@/lib/db'
 
 const TAG_RE = /#([\w一-鿿-]+)/g
 
-const NoteList = ({ activeId, onSelect, refreshKey, onTagClick }) => {
+const NoteList = ({ activeId, onSelect, onTagClick }) => {
   const { notes, statusFilter, searchQuery, activeTagId, setStatusFilter, setSearchQuery, load, resetFilters } = useNotesStore()
   const { tags, load: loadTags } = useTagsStore()
-  const [, setTick] = useState(0)
   // 当前在「就地编辑」的笔记 id
   const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     load()
     loadTags()
-  }, [load, loadTags])
-
-  useEffect(() => {
-    const handler = () => {
-      load()
-      loadTags()
-      setTick((k) => k + 1)
-    }
-    window.addEventListener('data-updated', handler)
-    return () => window.removeEventListener('data-updated', handler)
   }, [load, loadTags])
 
   const filtered = useMemo(() => {
@@ -289,13 +278,10 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
       />
       <div className="flex flex-wrap gap-1 mt-2 min-h-[20px]">
         {tags.map((t) => {
-          const tag = tagByName.get(t)
-          const color = tag?.color || '#9CA3AF'
           return (
             <span
               key={t}
-              className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ background: `${color}20`, color }}
+              className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-bg text-tag"
             >
               #{t}
             </span>
@@ -341,7 +327,6 @@ const renderContentWithTags = (content, tagByName, onTagClick) => {
     }
     const name = match[1]
     const tag = tagByName.get(name)
-    const color = tag?.color || '#9CA3AF'
     parts.push(
       <button
         key={`tag-${match.index}`}
@@ -349,8 +334,7 @@ const renderContentWithTags = (content, tagByName, onTagClick) => {
           e.stopPropagation()
           if (tag) onTagClick?.(e, tag.id)
         }}
-        className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mx-0.5 transition-colors hover:opacity-80"
-        style={{ background: `${color}20`, color }}
+        className="inline-flex items-center text-xs px-2 py-0.5 mx-px rounded-full font-medium bg-tag-bg text-tag transition-colors hover:bg-tag-bg-hover"
         title={tag ? `筛选 #${name}` : `#${name}（本地无实体）`}
       >
         #{name}

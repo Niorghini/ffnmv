@@ -1,7 +1,7 @@
 /**
- * Editor —— 圆角描边卡片 + focus 蓝边 + 实时字数 + 发送按钮
+ * Editor —— 圆角描边卡片 + focus 蓝边 + 实时字数 + 发布按钮
  * - 位于左栏顶部
- * - 新建：placeholder 提示 + Ctrl+Enter / 点发送按钮提交
+ * - 新建：placeholder 提示 + Ctrl+Enter / 点发布按钮提交
  * - 编辑：300ms debounce 自动保存 + 小状态提示
  * - 标签识别 + chip 预览
  */
@@ -96,7 +96,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
         placeholder={
           note
             ? '编辑内容...'
-            : '记录想法... （#标签 格式添加标签，Ctrl+Enter 发送）'
+            : '记录想法... （#标签 格式添加标签，Ctrl+Enter 发布）'
         }
         maxLength={note ? undefined : MAX_CHARS}
         className="w-full resize-none outline-none text-base leading-relaxed placeholder:text-[#9ba1a6] focus:ring-0 border-0 bg-transparent"
@@ -108,7 +108,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
           {tags.map((t) => (
             <span
               key={t}
-              className="text-xs px-1.5 py-0.5 bg-blue-50 text-[#0077B6] rounded"
+              className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-bg text-tag"
             >
               #{t}
             </span>
@@ -133,7 +133,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
                 className="flex items-center gap-1 px-3 py-1.5 bg-[#0077B6] text-white text-sm rounded-md hover:bg-[#005f8c] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
               >
                 <Send size={14} />
-                发送
+                发布
               </button>
             </>
           )}

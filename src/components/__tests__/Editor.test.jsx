@@ -80,9 +80,9 @@ describe('Editor', () => {
     expect(screen.getByText('2 字')).toBeInTheDocument()
   })
 
-  it('发送按钮：空内容 disabled，有内容 enabled', async () => {
+  it('发布按钮：空内容 disabled，有内容 enabled', async () => {
     render(<Editor note={null} onSaved={vi.fn()} />)
-    const sendBtn = screen.getByRole('button', { name: /发送/ })
+    const sendBtn = screen.getByRole('button', { name: /发布/ })
     expect(sendBtn).toBeDisabled()
     const textarea = screen.getByPlaceholderText(/记录想法/)
     const user = userEvent.setup()
@@ -90,13 +90,13 @@ describe('Editor', () => {
     expect(sendBtn).not.toBeDisabled()
   })
 
-  it('发送按钮：点一下也触发 create', async () => {
+  it('发布按钮：点一下也触发 create', async () => {
     const onSaved = vi.fn()
     render(<Editor note={null} onSaved={onSaved} />)
     const textarea = screen.getByPlaceholderText(/记录想法/)
     const user = userEvent.setup()
     await user.type(textarea, 'click send')
-    await user.click(screen.getByRole('button', { name: /发送/ }))
+    await user.click(screen.getByRole('button', { name: /发布/ }))
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
     const all = await db.notes.toArray()
     expect(all[0].content).toBe('click send')

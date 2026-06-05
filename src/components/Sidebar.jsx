@@ -19,15 +19,6 @@ const Sidebar = () => {
     loadNotes()
   }, [loadTags, loadNotes])
 
-  useEffect(() => {
-    const handler = () => {
-      loadTags()
-      loadNotes()
-    }
-    window.addEventListener('data-updated', handler)
-    return () => window.removeEventListener('data-updated', handler)
-  }, [loadTags, loadNotes])
-
   const filteredTags = tags.filter((t) => t.name.toLowerCase().includes(tagQuery.toLowerCase()))
   // 只显示有活跃 link 的 tag（counts.get(t.id) > 0）
   const activeTags = filteredTags.filter((t) => (counts.get(t.id) || 0) > 0)
@@ -42,7 +33,7 @@ const Sidebar = () => {
       <section className="bg-white rounded-lg shadow-sm p-4">
         <div className="flex items-center gap-1.5 mb-3">
           <ListFilter size={14} className="text-gray-500" />
-          <h3 className="text-sm font-medium text-gray-700">筛选</h3>
+          <h3 className="text-sm font-semibold text-gray-700">筛选</h3>
         </div>
         <div className="flex items-center gap-2">
           <StatusPill
@@ -74,7 +65,7 @@ const Sidebar = () => {
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <Tag size={14} className="text-gray-500" />
-            <h3 className="text-sm font-medium text-gray-700">标签</h3>
+            <h3 className="text-sm font-semibold text-gray-700">标签</h3>
           </div>
           <span className="text-xs text-gray-400">{activeTags.length}</span>
         </div>
@@ -138,7 +129,7 @@ const Sidebar = () => {
 const StatusPill = ({ icon, label, count, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-colors ${
+    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-3 rounded-lg text-xs transition-colors ${
       active
         ? 'bg-[#0077B6] text-white'
         : 'bg-blue-50 text-[#0077B6] hover:bg-blue-100'
@@ -154,10 +145,10 @@ const TagRow = ({ tag, count, active, onClick }) => (
   <button
     onClick={onClick}
     className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
-      active ? 'bg-blue-50 text-[#0077B6] font-medium' : 'hover:bg-gray-50 text-gray-700'
+      active ? 'bg-tag-bg text-tag font-medium' : 'hover:bg-gray-50 text-gray-700'
     }`}
   >
-    <Hash size={12} style={{ color: tag.color || '#9CA3AF' }} />
+    <Hash size={12} className="text-tag opacity-60" />
     <span className="flex-1 text-left truncate">{tag.name}</span>
     <span className="text-xs text-gray-400">{count}</span>
   </button>

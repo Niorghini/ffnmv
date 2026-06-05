@@ -21,6 +21,10 @@ export default {
         // 沿用 v0.7.0 蓝 (#0077B6)
         primary: '#0077B6',
         'primary-dark': '#005f8c',
+        // 标签蓝：所有 #tag chip / 标签列表统一此色
+        tag: '#1A75B6',
+        'tag-bg': '#F0F5FF',
+        'tag-bg-hover': '#E0EAFB',
         bg: {
           main: '#f5f6f7',
           card: '#FFFFFF',

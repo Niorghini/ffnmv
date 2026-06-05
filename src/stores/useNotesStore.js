@@ -1,10 +1,25 @@
 /**
  * 笔记列表 store
  * - 缓存当前过滤后的 notes
- * - 监听 data-updated 自动刷新
+ * - 监听 data-updated 自动刷新（50ms debounce）
  */
 import { create } from 'zustand'
 import { notesRepo } from '@/repositories/notesRepo'
+
+let _reloadTimer = null
+const scheduleReload = (load) => {
+  if (_reloadTimer) return
+  _reloadTimer = setTimeout(() => {
+    _reloadTimer = null
+    load()
+  }, 50)
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('data-updated', () => {
+    scheduleReload(useNotesStore.getState().load)
+  })
+}
 
 export const useNotesStore = create((set, get) => ({
   notes: [],

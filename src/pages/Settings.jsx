@@ -352,10 +352,7 @@ const Settings = () => {
                 <ul className="mb-3 space-y-1 max-h-40 overflow-y-auto bg-bg-main rounded p-2">
                   {unused.map((t) => (
                     <li key={t.id} className="flex items-center gap-2 text-xs">
-                      <span
-                        className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                        style={{ background: t.color || '#9CA3AF' }}
-                      />
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0 bg-tag" />
                       <span className="text-gray-700 flex-1 truncate">#{t.name}</span>
                       {t.deleted_at && (
                         <span className="text-[10px] text-gray-400">已软删</span>

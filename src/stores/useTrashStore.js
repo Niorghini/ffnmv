@@ -1,9 +1,10 @@
 /**
- * 标签 store
+ * 回收站 store
+ * - 缓存软删除的 notes（deleted_at != null）
  * - 监听 data-updated 自动刷新（50ms debounce）
  */
 import { create } from 'zustand'
-import { tagsRepo } from '@/repositories/tagsRepo'
+import { notesRepo } from '@/repositories/notesRepo'
 
 let _reloadTimer = null
 const scheduleReload = (load) => {
@@ -16,20 +17,16 @@ const scheduleReload = (load) => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('data-updated', () => {
-    scheduleReload(useTagsStore.getState().load)
+    scheduleReload(useTrashStore.getState().load)
   })
 }
 
-export const useTagsStore = create((set, get) => ({
-  tags: [],
-  counts: new Map(),
+export const useTrashStore = create((set) => ({
+  notes: [],
   loaded: false,
 
   load: async () => {
-    const [tags, counts] = await Promise.all([
-      tagsRepo.getAll(),
-      tagsRepo.countsByTag(),
-    ])
-    set({ tags, counts, loaded: true })
+    const all = await notesRepo.getAll({ includeDeleted: true })
+    set({ notes: all.filter((n) => n.deleted_at), loaded: true })
   },
 }))
