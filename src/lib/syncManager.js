@@ -225,6 +225,9 @@ export class SyncManager {
       ...row,
       user_id: this.userId,
       last_sync_device: row.last_sync_device || this.deviceId,
+      // 兜底:note_tags 老数据可能没 updated_at,撞云端 NOT NULL 约束。
+      // 这里兜底补上,新数据由 repo 层正确写入。
+      updated_at: row.updated_at || nowIso(this.clock),
     }))
 
     const onConflict = entity === 'note_tags' ? 'note_id,tag_id' : 'id'

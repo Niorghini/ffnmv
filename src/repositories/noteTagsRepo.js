@@ -43,6 +43,7 @@ export const noteTagsRepo = {
           note_id: noteId,
           tag_id: tagId,
           created_at: ts,
+          updated_at: ts,
           deleted_at: null,
           version: 1,
           sync_status: 'pending',
@@ -71,6 +72,7 @@ export const noteTagsRepo = {
         await db.note_tags.put({
           ...existing,
           deleted_at: ts,
+          updated_at: ts,
           version: existing.version + 1,
           sync_status: 'pending',
         })
@@ -100,6 +102,7 @@ export const noteTagsRepo = {
           note_id: noteId,
           tag_id: tagId,
           created_at: ts,
+          updated_at: ts,
           deleted_at: null,
           version: 1,
           sync_status: 'pending',
@@ -114,6 +117,7 @@ export const noteTagsRepo = {
         await db.note_tags.put({
           ...row,
           deleted_at: ts,
+          updated_at: ts,
           version: row.version + 1,
           sync_status: 'pending',
         })
