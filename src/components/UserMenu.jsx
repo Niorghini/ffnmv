@@ -9,7 +9,7 @@ import { useSyncStore } from '@/stores/useSyncStore'
 
 const UserMenu = ({ onSync }) => {
   const { user, signOut } = useAuthStore()
-  const { status, pending, online, lastSyncAt } = useSyncStore()
+  const { status, pending, online, lastSyncAt, error } = useSyncStore()
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
 
@@ -78,6 +78,14 @@ const UserMenu = ({ onSync }) => {
         <div className="flex items-center gap-1.5">
           <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`} />
           <span className={badge.color}>{badge.text}</span>
+          {status === 'error' && error && (
+            <span
+              className="text-red-500 max-w-md truncate"
+              title={error}
+            >
+              · {error}
+            </span>
+          )}
           {lastSyncAt && online && status !== 'syncing' && (
             <span className="text-gray-400">
               · {new Date(lastSyncAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
