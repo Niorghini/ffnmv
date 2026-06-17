@@ -7,7 +7,7 @@ import './index.css'
 if (typeof window !== 'undefined') {
   const p = window.location.pathname
   if (p.startsWith('/ffn-pre')) {
-    document.title = '发法牛v1.2preview - 轻量化多端同步笔记'
+    document.title = '发法牛v1.2.1preview - 轻量化多端同步笔记'
   }
 }
 
