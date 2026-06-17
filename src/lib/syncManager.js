@@ -45,7 +45,13 @@ export class SyncManager {
     this.onConflict = onConflict
     this.isSyncing = false
     this.realtimeChannel = null
-    this.pollingInterval = null
+    this._pollTimer = null
+    // 自适应轮询基线 60s,空闲 3 次后翻倍,上限 5min。Realtime 已覆盖实时场景,
+    // 这里只是兜底,所以可以激进拉长以省电/省带宽。
+    this.minPollInterval = 60000
+    this.maxPollInterval = 300000
+    this.pollInterval = this.minPollInterval
+    this.consecutiveEmpty = 0
     this.retryDelay = 1000
     this.maxRetryDelay = 32000
     this.batchSize = 100
@@ -76,9 +82,9 @@ export class SyncManager {
       this.supabase.removeChannel(this.realtimeChannel)
       this.realtimeChannel = null
     }
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval)
-      this.pollingInterval = null
+    if (this._pollTimer) {
+      clearTimeout(this._pollTimer)
+      this._pollTimer = null
     }
     this.removeListeners()
     if (this._retryTimer) clearTimeout(this._retryTimer)
@@ -88,24 +94,30 @@ export class SyncManager {
 
   // ─── 全量增量同步 ───────────────────────────────────────────────────
   async fullSync() {
-    if (this.isSyncing) return
+    if (this.isSyncing) return false
     if (!this.userId) {
       const u = await this.supabase.auth.getUser()
       const user = u?.data?.user
-      if (!user) return
+      if (!user) return false
       this.userId = user.id
     }
     this.isSyncing = true
     this._setState({ status: 'syncing' })
+    let totalPulled = 0
+    let totalPushed = 0
     try {
       for (const entity of ENTITIES) {
-        await this._syncEntity(entity)
+        const { pulled, pushed } = await this._syncEntity(entity)
+        totalPulled += pulled
+        totalPushed += pushed
       }
       this.retryDelay = 1000
       this._setState({ status: 'idle', lastSyncAt: this.clock() })
+      return totalPulled > 0 || totalPushed > 0
     } catch (err) {
       this._setState({ status: 'error', error: err.message })
       this.scheduleRetry()
+      return false
     } finally {
       this.isSyncing = false
     }
@@ -164,7 +176,8 @@ export class SyncManager {
     await this._cleanupRemoteHardDeletions(entity)
 
     // 2. 推送本地待同步
-    await this._pushLocalChanges(entity)
+    const pushed = await this._pushLocalChanges(entity)
+    return { pulled: cloudRows?.length || 0, pushed }
   }
 
   /**
@@ -219,7 +232,7 @@ export class SyncManager {
       .limit(this.batchSize)
       .toArray()
 
-    if (pending.length === 0) return
+    if (pending.length === 0) return 0
 
     const items = pending.map((row) => ({
       ...row,
@@ -257,6 +270,7 @@ export class SyncManager {
     for (const q of queueItems) {
       await this.db.sync_queue.update(q.id, { status: 'done' })
     }
+    return pending.length
   }
 
   // ─── 冲突处理 ───────────────────────────────────────────────────────
@@ -356,13 +370,43 @@ export class SyncManager {
 
   // ─── 轮询 + 监听 ───────────────────────────────────────────────────
   startPolling() {
-    if (this.pollingInterval) return
-    this.pollingInterval = setInterval(() => {
-      if (this.isSyncing) return
-      if (typeof navigator !== 'undefined' && !navigator.onLine) return
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
-      this.fullSync()
-    }, 30000)
+    if (this._pollTimer) return
+    this._schedulePoll()
+  }
+
+  // 自适应轮询:基线 60s,连续 3 次空 sync(无拉无推)翻倍间隔,上限 5min。
+  // 任何本地写入会触发 1s debounced 立即同步,如果有变更就把间隔重置回基线。
+  _schedulePoll() {
+    this._pollTimer = setTimeout(async () => {
+      this._pollTimer = null
+      // 跳过条件:正在 sync / 离线 / tab 在后台——但仍要 reschedule 别丢失
+      if (this.isSyncing
+        || (typeof navigator !== 'undefined' && !navigator.onLine)
+        || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) {
+        this._schedulePoll()
+        return
+      }
+      let hadChanges = false
+      try {
+        hadChanges = await this.fullSync()
+      } catch {
+        // fullSync 内部已经 setState('error'),这里吞掉不让定时器链断
+      }
+      this._adaptPollInterval(hadChanges)
+      this._schedulePoll()
+    }, this.pollInterval)
+  }
+
+  _adaptPollInterval(hadChanges) {
+    if (hadChanges) {
+      this.consecutiveEmpty = 0
+      this.pollInterval = this.minPollInterval
+    } else {
+      this.consecutiveEmpty++
+      if (this.consecutiveEmpty >= 3) {
+        this.pollInterval = Math.min(this.pollInterval * 2, this.maxPollInterval)
+      }
+    }
   }
 
   setupListeners() {

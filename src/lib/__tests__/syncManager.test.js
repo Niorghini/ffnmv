@@ -57,7 +57,7 @@ describe('SyncManager', () => {
     const result = await sm.start()
     expect(result).toBe(true)
     expect(sm.userId).toBe('user-1')
-    expect(sm.pollingInterval).toBeTruthy()
+    expect(sm._pollTimer).toBeTruthy()
     await sm.stop()
   })
 
@@ -301,7 +301,7 @@ describe('SyncManager', () => {
     // 让数据库已有 synced 数据，sync 应该完成（不抛）
     await db.notes.add(mkNote({ id: 'x', sync_status: 'synced' }))
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await expect(sm.fullSync()).resolves.toBeUndefined()
+    await expect(sm.fullSync()).resolves.toBe(false)
     spy.mockRestore()
     // failNext 已被消费
     sb.state.failNext = false
