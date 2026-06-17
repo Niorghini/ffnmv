@@ -25,7 +25,6 @@ export const useNotesStore = create((set, get) => ({
   notes: [],
   loaded: false,
   activeId: null, // 选中的笔记 id（编辑右栏用）
-  actionSheetNoteId: null, // ActionSheet 弹层显示的笔记 id（触屏点 ⋮ 触发）
   activeTagId: null, // null = 全部
   statusFilter: 'all', // all | pending | completed
   searchQuery: '',
@@ -42,8 +41,6 @@ export const useNotesStore = create((set, get) => ({
   },
 
   setActiveId: (id) => set({ activeId: id }),
-
-  setActionSheetNoteId: (id) => set({ actionSheetNoteId: id }),
 
   setActiveTagId: (id) => {
     set({ activeTagId: id, loaded: false })
