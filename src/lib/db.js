@@ -31,6 +31,8 @@ db.version(DB_VERSION)
 
 // 诊断：让外部知道 v0.7.0 数据是否被清理过（一次性）
 const LEGACY_FLAG_KEY = 'ffn_v07_legacy_cleaned'
+// 性能：让 openDb 跳过重复的 indexedDB.databases() 扫描（detect 已经跑过且没遗留）
+const LEGACY_CHECKED_KEY = 'ffn_v07_legacy_checked'
 
 const safeStorage = {
   getItem(k) {
@@ -51,6 +53,9 @@ const safeStorage = {
 
 export const wasLegacyCleaned = () => safeStorage.getItem(LEGACY_FLAG_KEY) === '1'
 export const markLegacyCleaned = () => safeStorage.setItem(LEGACY_FLAG_KEY, '1')
+// 用单独的"已检查"标志,不影响 wasLegacyCleaned 的语义(那标志控制 toast)
+const wasLegacyChecked = () => safeStorage.getItem(LEGACY_CHECKED_KEY) === '1'
+const markLegacyChecked = () => safeStorage.setItem(LEGACY_CHECKED_KEY, '1')
 
 // 启动时清旧 DB（如果存在但没被 upgrade 命中——防御性）
 // 仅在初次打开后才会运行 upgrade；如果浏览器残留了 v0.7.0 的 ffn_db
@@ -108,7 +113,12 @@ const makeFreshDb = () => {
 }
 
 export const openDb = async () => {
-  await detectAndPurgeLegacy()
+  // 性能：只在第一次启动时跑 indexedDB.databases() 扫描(50~200ms 视浏览器)。
+  // 后续启动直接 db.open(),不再做冗余扫描。
+  if (!wasLegacyChecked()) {
+    await detectAndPurgeLegacy()
+    markLegacyChecked()
+  }
   if (db.isOpen()) return db
   // 第一次尝试：用 module-level db
   try {

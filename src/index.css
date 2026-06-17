@@ -37,3 +37,12 @@ body {
 textarea::placeholder {
   color: #9BA1A6;
 }
+
+/* 笔记行操作按钮:触屏(coarse pointer 或无 hover 能力)直接常显,不走 hover 折叠。
+   用 any-pointer: coarse 兼容 iPad 带妙控键盘 / Surface 这类混合设备,
+   仅 (hover:none) 不够 —— 部分触屏会触发 sticky hover,导致 group-hover 仍生效。 */
+@media (hover: none), (any-pointer: coarse) {
+  .note-row-actions {
+    opacity: 1;
+  }
+}

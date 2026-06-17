@@ -36,8 +36,10 @@ function App() {
   const [showLegacyToast, setShowLegacyToast] = useState(false)
 
   useEffect(() => {
+    console.time('[ffn] openDb')
     openDb()
       .then(() => {
+        console.timeEnd('[ffn] openDb')
         if (!wasLegacyCleaned()) {
           setShowLegacyToast(true)
           markLegacyCleaned()
@@ -46,9 +48,11 @@ function App() {
       })
       .catch((err) => {
         console.error('DB open failed:', err)
+        console.timeEnd('[ffn] openDb')
         setDbReady(true)
       })
-    init()
+    console.time('[ffn] init')
+    init().then(() => console.timeEnd('[ffn] init'))
   }, [init])
 
   // 登录态切换
