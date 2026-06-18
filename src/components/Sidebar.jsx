@@ -147,13 +147,13 @@ const TagRow = ({ tag, count, active, onClick }) => (
     title={`#${tag.name} · ${count} 条`}
     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border ${
       active
-        ? 'bg-tag-bg text-tag border-tag/30 font-medium'
-        : 'bg-gray-50 text-gray-600 border-transparent hover:bg-gray-100 hover:text-gray-900'
+        ? 'bg-tag text-white border-tag font-medium shadow-sm'
+        : 'bg-tag-bg text-tag border-tag/30 hover:bg-tag-bg-hover'
     }`}
   >
-    <Hash size={10} className="opacity-60 shrink-0" />
+    <Hash size={10} className={`opacity-70 shrink-0 ${active ? 'text-white' : 'text-tag'}`} />
     <span className="truncate max-w-[100px]">{tag.name}</span>
-    <span className={`text-[10px] tabular-nums shrink-0 ${active ? 'text-tag/70' : 'text-gray-400'}`}>{count}</span>
+    <span className={`text-[10px] tabular-nums shrink-0 ${active ? 'text-white/80' : 'text-tag/60'}`}>{count}</span>
   </button>
 )
 
