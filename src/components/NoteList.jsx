@@ -273,8 +273,8 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKey}
         onClick={(e) => e.stopPropagation()}
-        rows={Math.max(3, content.split('\n').length)}
-        className="w-full resize-none outline-none text-sm leading-relaxed whitespace-pre-wrap break-words border-0 p-0 bg-transparent placeholder:text-gray-400 focus:ring-0"
+        rows={Math.min(20, Math.max(3, content.split('\n').length))}
+        className="w-full resize-none outline-none text-sm leading-relaxed whitespace-pre-wrap break-words border-0 p-0 bg-transparent placeholder:text-gray-400 focus:ring-0 max-h-[30rem] overflow-y-auto"
       />
       <div className="flex flex-wrap gap-1 mt-2 min-h-[20px]">
         {tags.map((t) => {

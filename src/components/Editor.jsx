@@ -99,8 +99,8 @@ const Editor = ({ note, onSaved, onCancel }) => {
             : '记录想法... （#标签 格式添加标签，Ctrl+Enter 发布）'
         }
         maxLength={note ? undefined : MAX_CHARS}
-        className="w-full resize-none outline-none text-base leading-relaxed placeholder:text-[#9ba1a6] focus:ring-0 border-0 bg-transparent"
-        rows={4}
+        className="w-full resize-none outline-none text-base leading-relaxed placeholder:text-[#9ba1a6] focus:ring-0 border-0 bg-transparent min-h-24 max-h-[30rem] overflow-y-auto"
+        rows={3}
         autoFocus={!note}
       />
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 gap-2">
