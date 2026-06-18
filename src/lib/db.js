@@ -125,17 +125,35 @@ export const openDb = async () => {
     await db.open()
     return db
   } catch (err) {
-    console.warn('[db] module-level db.open() failed, self-healing:', err?.message)
+    // 关键安全检查:只有真正的 schema/version 冲突才允许 wipe 自愈。
+    // 其他 transient 失败(quota exceeded / write lock / InvalidState / browser quirk)
+    // 不要清空用户数据 —— 让上层(App.jsx catch)处理 UI 提示。
+    // 旧逻辑是任何失败都 deleteDatabase(),这就是"打开页面没数据"的根因:
+    // 偶发失败 → DB 被清 → 同步还没拉回来 → UI 空。
+    const msg = err?.message || ''
+    const isVersionConflict =
+      err?.name === 'VersionError' ||
+      err?.inner?.name === 'VersionError' ||
+      err?.name === 'OpenFailedError' && /version/i.test(msg) ||
+      /version/i.test(msg) && /(less than|greater than|requested|existing)/i.test(msg)
+    if (!isVersionConflict) {
+      throw err
+    }
+    console.warn('[db] schema version conflict, self-healing:', msg)
   }
-  // 自愈：删 DB + 全新实例
+  // 自愈路径:删 DB + 全新实例
   await deleteDb()
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const fresh = makeFreshDb()
       await fresh.open()
-      // 替换 module-level db
       Object.assign(db, fresh)
       console.info(`[db] self-healed on attempt ${attempt}`)
+      // 关键:通知 sync 立即从云端全量重拉,补回 wipe 期间空掉的窗口。
+      // 不发这个事件,用户得等下一次 polling(60s+)才看到数据。
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('db-reset'))
+      }
       return db
     } catch (err) {
       console.warn(`[db] self-heal attempt ${attempt} failed:`, err?.message)

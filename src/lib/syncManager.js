@@ -431,10 +431,17 @@ export class SyncManager {
         if (!this.isSyncing) this.fullSync()
       }, 1000)
     }
+    // 本地 DB 被 db.js self-heal 清空重建后,立即全量重拉补回数据。
+    // 否则用户得等下一次 polling(60s+)才看到笔记回来,期间 UI 是空的。
+    this._onDbReset = () => {
+      console.info('[sync] db-reset detected, immediate full sync to recover local data')
+      this.fullSync()
+    }
     window.addEventListener('online', this._onOnline)
     window.addEventListener('offline', this._onOffline)
     document.addEventListener('visibilitychange', this._onVisibility)
     window.addEventListener('data-updated', this._onDataUpdated)
+    window.addEventListener('db-reset', this._onDbReset)
   }
 
   removeListeners() {
@@ -442,6 +449,7 @@ export class SyncManager {
     if (this._onOnline) window.removeEventListener('online', this._onOnline)
     if (this._onOffline) window.removeEventListener('offline', this._onOffline)
     if (this._onDataUpdated) window.removeEventListener('data-updated', this._onDataUpdated)
+    if (this._onDbReset) window.removeEventListener('db-reset', this._onDbReset)
     if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility)
   }
 
