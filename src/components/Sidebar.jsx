@@ -84,9 +84,9 @@ const Sidebar = () => {
             </button>
           )}
         </div>
-        <div className="space-y-0.5 max-h-64 overflow-y-auto">
+        <div className="flex flex-wrap gap-1.5 max-h-64 overflow-y-auto content-start">
           {activeTags.length === 0 ? (
-            <p className="text-xs text-gray-400 py-3 text-center">
+            <p className="text-xs text-gray-400 py-3 text-center w-full">
               {tags.length === 0
                 ? <>在笔记中使用 <code className="text-[#0077B6]">#标签</code> 创建</>
                 : '暂无在用标签，去「设置」清理未用标签'}
@@ -144,13 +144,16 @@ const StatusPill = ({ icon, label, count, active, onClick }) => (
 const TagRow = ({ tag, count, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
-      active ? 'bg-tag-bg text-tag font-medium' : 'hover:bg-gray-50 text-gray-700'
+    title={`#${tag.name} · ${count} 条`}
+    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border ${
+      active
+        ? 'bg-tag-bg text-tag border-tag/30 font-medium'
+        : 'bg-gray-50 text-gray-600 border-transparent hover:bg-gray-100 hover:text-gray-900'
     }`}
   >
-    <Hash size={12} className="text-tag opacity-60" />
-    <span className="flex-1 text-left truncate">{tag.name}</span>
-    <span className="text-xs text-gray-400">{count}</span>
+    <Hash size={10} className="opacity-60 shrink-0" />
+    <span className="truncate max-w-[100px]">{tag.name}</span>
+    <span className={`text-[10px] tabular-nums shrink-0 ${active ? 'text-tag/70' : 'text-gray-400'}`}>{count}</span>
   </button>
 )
 
