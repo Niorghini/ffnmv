@@ -53,7 +53,7 @@ describe('Login', () => {
   it('email + password 必填', () => {
     render(<Login />)
     const email = screen.getByPlaceholderText('you@example.com')
-    const password = screen.getByPlaceholderText('••••••')
+    const password = screen.getByPlaceholderText('••••••••')
     expect(email).toBeRequired()
     expect(password).toBeRequired()
   })
