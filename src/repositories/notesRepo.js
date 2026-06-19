@@ -413,13 +413,17 @@ export const notesRepo = {
   },
 
   async getAll({ includeDeleted = false, includeArchived = false } = {}) {
-    let collection = db.notes.orderBy('created_at').reverse()
-    const rows = await collection.toArray()
-    return rows.filter((n) => {
-      if (!includeDeleted && n.deleted_at) return false
-      if (!includeArchived && n.archived_at) return false
-      return true
-    })
+    // sort 由 created_at 索引推下去,deleted/archived 过滤在 cursor 里
+    // 跑（IO 仍是全表,但省掉 toArray 中间数组 + 一次额外 JS pass）
+    return db.notes
+      .orderBy('created_at')
+      .reverse()
+      .filter((n) => {
+        if (!includeDeleted && n.deleted_at) return false
+        if (!includeArchived && n.archived_at) return false
+        return true
+      })
+      .toArray()
   },
 
   async getByTag(tagId, { includeDeleted = false } = {}) {

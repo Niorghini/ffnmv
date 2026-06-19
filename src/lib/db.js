@@ -8,13 +8,16 @@
 import Dexie from 'dexie'
 
 const DB_NAME = 'ffn_db'
-const DB_VERSION = 4
+const DB_VERSION = 5
+// v4 → v5: notes 加 archived_at 索引 + 规范化 undefined → null
+// v3 → v4: ...
+// v0.7.0 → v1.2: 旧 'memos' store 升级时显式删除
 
 export const db = new Dexie(DB_NAME)
 
 db.version(DB_VERSION)
   .stores({
-    notes: 'id, status, created_at, updated_at, sync_status, deleted_at',
+    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at',
     tags: 'id, name, sync_status, deleted_at',
     note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at, sync_status',
     sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
@@ -26,6 +29,12 @@ db.version(DB_VERSION)
     // v0.7.0 → v1.2：旧 'memos' store 不在 schema 中，升级时显式删除
     if (tx.db.objectStoreNames.contains('memos')) {
       tx.db.deleteObjectStore('memos')
+    }
+    // v4 → v5: 规范化 archived_at 字段(undefined → null),保证新索引覆盖全表
+    if (tx.oldVersion < 5) {
+      await tx.table('notes').toCollection().modify((n) => {
+        if (n.archived_at === undefined) n.archived_at = null
+      })
     }
   })
 
@@ -97,7 +106,7 @@ const makeFreshDb = () => {
   // 新 Dexie 实例，避开旧实例的 internal state 污染
   const fresh = new Dexie(DB_NAME)
   fresh.version(DB_VERSION).stores({
-    notes: 'id, status, created_at, updated_at, sync_status, deleted_at',
+    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at',
     tags: 'id, name, sync_status, deleted_at',
     note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at, sync_status',
     sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
@@ -107,6 +116,11 @@ const makeFreshDb = () => {
   }).upgrade(async (tx) => {
     if (tx.db.objectStoreNames.contains('memos')) {
       tx.db.deleteObjectStore('memos')
+    }
+    if (tx.oldVersion < 5) {
+      await tx.table('notes').toCollection().modify((n) => {
+        if (n.archived_at === undefined) n.archived_at = null
+      })
     }
   })
   return fresh
