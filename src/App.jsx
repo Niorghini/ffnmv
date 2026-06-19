@@ -6,7 +6,7 @@
  * - 启动 auto-archive scheduler
  * - 启动 cleanup
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { openDb, wasLegacyCleaned, markLegacyCleaned } from '@/lib/db'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -14,19 +14,28 @@ import { startSync, stopSync } from '@/lib/syncInstance'
 import { startArchiveScheduler, stopArchiveScheduler } from '@/lib/autoArchive'
 import { runCleanup } from '@/lib/cleanup'
 import Login from '@/pages/Login'
-import MainApp from '@/pages/MainApp'
-import Trash from '@/pages/Trash'
-import Settings from '@/pages/Settings'
 import Toast from '@/components/Toast'
+
+// 路由级 code splitting (EFF-003)
+// 90% 用户只进 / (MainApp),Trash / Settings 单独 chunk 按需加载。
+const MainApp = lazy(() => import('@/pages/MainApp'))
+const Trash = lazy(() => import('@/pages/Trash'))
+const Settings = lazy(() => import('@/pages/Settings'))
+
+const PageFallback = () => (
+  <div className="flex items-center justify-center h-screen text-gray-500 text-sm">加载中...</div>
+)
 
 function AuthedRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<MainApp />} />
-      <Route path="/trash" element={<Trash />} />
-      <Route path="/settings" element={<Settings />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        <Route path="/" element={<MainApp />} />
+        <Route path="/trash" element={<Trash />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
 
