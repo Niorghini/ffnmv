@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import logoUrl from '/logo.png'
 
 export default function Login() {
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
@@ -48,8 +49,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-bg-main p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-[#0077B6] mb-1">发法牛</h1>
-          <p className="text-sm text-gray-500">v1.2 · 轻量化多端同步笔记</p>
+          <img src={logoUrl} alt="发法牛" className="h-12 mx-auto" />
         </div>
 
         {!configured && (
