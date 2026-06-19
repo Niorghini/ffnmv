@@ -3,7 +3,8 @@
  * 风格与 v0.7.0 一致：bg-white rounded-lg shadow-sm，text-xs
  */
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, LogOut, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ChevronDown, LogOut, RefreshCw, Settings, Trash2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useSyncStore } from '@/stores/useSyncStore'
 
@@ -61,6 +62,24 @@ const UserMenu = ({ onSync }) => {
             role="menu"
             className="absolute right-0 top-full mt-1 z-10 min-w-[120px] bg-white rounded-lg shadow-md border border-gray-100 py-1 animate-fadeInScale origin-top-right"
           >
+            <Link
+              to="/settings"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Settings size={12} />
+              设置
+            </Link>
+            <Link
+              to="/trash"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Trash2 size={12} />
+              回收站
+            </Link>
             <button
               type="button"
               role="menuitem"

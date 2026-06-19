@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Trash2, Settings, Hash, Tag, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
+import { Hash, Tag, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { useNotesStore } from '@/stores/useNotesStore'
 
@@ -103,24 +103,6 @@ const Sidebar = () => {
             ))
           )}
         </div>
-      </section>
-
-      {/* 操作 */}
-      <section className="bg-white rounded-lg shadow-sm p-2 divide-y divide-gray-100">
-        <Link
-          to="/trash"
-          className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
-        >
-          <Trash2 size={14} />
-          回收站
-        </Link>
-        <Link
-          to="/settings"
-          className="w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
-        >
-          <Settings size={14} />
-          设置
-        </Link>
       </section>
     </>
   )
