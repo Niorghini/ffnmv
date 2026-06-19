@@ -8,9 +8,11 @@
 |---|---|---|
 | `nginx.conf` | ffnmv 站点配置(server 块) | `/etc/nginx/sites-available/ffnmv` |
 | `rate-limit.conf` | 登录限速(limit_req_zone) | `/etc/nginx/conf.d/rate-limit.conf` |
-| `snippets/auth-rate-limit.yml` | auth 服务 environment 4 行新增 | 插入到 `/opt/supabase/docker/docker-compose.yml` |
+| `snippets/auth-rate-limit.yml` | auth 服务 environment 4 行 rate limit | 插入到 `/opt/supabase/docker/docker-compose.yml` |
+| `snippets/auth-password-min-length.yml` | auth 服务 1 行 GOTRUE_PASSWORD_MIN_LENGTH | 插入到 `/opt/supabase/docker/docker-compose.yml` |
 | `deploy-nginx.sh` | 部署 nginx 配置 | — |
 | `deploy-rate-limit.sh` | 部署 Supabase 登录限速 env + compose patch | — |
+| `deploy-password.sh` | 部署密码最小长度(对齐前端 8 位) | — |
 
 ## 当前覆盖的安全评估项
 
