@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('@/stores/useAuthStore', () => ({
   useAuthStore: vi.fn(),
@@ -32,6 +33,9 @@ const setupStores = ({ user = mockUser, signOut = mockSignOut, sync = {} } = {})
   }))
 }
 
+const renderWithRouter = (ui, options) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>, options)
+
 describe('UserMenu', () => {
   beforeEach(() => {
     mockSignOut.mockClear()
@@ -39,19 +43,19 @@ describe('UserMenu', () => {
 
   it('未登录时返回 null', () => {
     setupStores({ user: null })
-    const { container } = render(<UserMenu onSync={() => {}} />)
+    const { container } = renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(container).toBeEmptyDOMElement()
   })
 
   it('完整显示邮箱', () => {
     setupStores()
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('niorghini.test@gmail.com')).toBeInTheDocument()
   })
 
   it('渲染同步三件套：状态点 + 状态文字 + 同步按钮', () => {
     setupStores({ sync: { status: 'idle', pending: 0, online: true, lastSyncAt: new Date('2026-06-03T10:30:00') } })
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('已同步')).toBeInTheDocument()
     expect(screen.getByLabelText('立即同步')).toBeInTheDocument()
     // 同步时间存在（lastSyncAt + online + 非 syncing）
@@ -60,25 +64,25 @@ describe('UserMenu', () => {
 
   it('离线时显示「离线」', () => {
     setupStores({ sync: { online: false } })
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('离线')).toBeInTheDocument()
   })
 
   it('同步失败时显示「同步失败」', () => {
     setupStores({ sync: { status: 'error' } })
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('同步失败')).toBeInTheDocument()
   })
 
   it('有 pending 时显示「N 条待同步」', () => {
     setupStores({ sync: { pending: 3 } })
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('3 条待同步')).toBeInTheDocument()
   })
 
   it('点击邮箱按钮展开下拉，点击外部收起', async () => {
     setupStores()
-    render(
+    renderWithRouter(
       <div>
         <div data-testid="outside">outside</div>
         <UserMenu onSync={() => {}} />
@@ -99,7 +103,7 @@ describe('UserMenu', () => {
 
   it('点击登出调用 signOut', async () => {
     setupStores()
-    render(<UserMenu onSync={() => {}} />)
+    renderWithRouter(<UserMenu onSync={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: /niorghini.test@gmail.com/ }))
     const signOutBtn = await screen.findByText('登出')
     fireEvent.click(signOutBtn)
@@ -109,7 +113,7 @@ describe('UserMenu', () => {
   it('点击同步按钮调用 onSync', () => {
     const onSync = vi.fn()
     setupStores()
-    render(<UserMenu onSync={onSync} />)
+    renderWithRouter(<UserMenu onSync={onSync} />)
     fireEvent.click(screen.getByLabelText('立即同步'))
     expect(onSync).toHaveBeenCalledTimes(1)
   })

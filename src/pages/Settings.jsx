@@ -4,12 +4,16 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, LogOut, Eraser, RotateCcw, Download, Upload } from 'lucide-react'
+import {
+  ArrowLeft, RefreshCw, LogOut, Eraser, RotateCcw, Download, Upload,
+  ChevronDown, ChevronRight,
+} from 'lucide-react'
 import { getArchiveAfterDays, setArchiveAfterDays, runArchive } from '@/lib/autoArchive'
 import { tagsRepo } from '@/repositories/tagsRepo'
 import { notesRepo } from '@/repositories/notesRepo'
 import { fullReset } from '@/lib/factoryReset'
 import { exportDataAsJson, importData, validateImport } from '@/lib/dataIO'
+import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useSyncStore } from '@/stores/useSyncStore'
@@ -32,6 +36,13 @@ const Settings = () => {
   const [resetting, setResetting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState('')
+  // 修改密码
+  const [pwExpanded, setPwExpanded] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwMsg, setPwMsg] = useState(null) // { type: 'success' | 'error', text }
   const fileInputRef = useRef(null)
 
   const refreshUnused = async () => {
@@ -186,6 +197,54 @@ const Settings = () => {
     }
   }
 
+  const handleChangePassword = async () => {
+    setPwMsg(null)
+    // 客户端预校验
+    if (!pwCurrent) return setPwMsg({ type: 'error', text: '请输入当前密码' })
+    if (pwNew.length < 8) return setPwMsg({ type: 'error', text: '新密码至少 8 位' })
+    if (pwNew !== pwConfirm) return setPwMsg({ type: 'error', text: '两次新密码不一致' })
+    if (pwNew === pwCurrent) return setPwMsg({ type: 'error', text: '新密码不能与当前密码相同' })
+
+    setPwSaving(true)
+    try {
+      // 1. 先用当前密码 signIn 一下,验证旧密码正确(也刷新 session)
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: pwCurrent,
+      })
+      if (signInErr) throw new Error('当前密码不正确')
+
+      // 2. 改密
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: pwNew,
+      })
+      if (updateErr) {
+        // session 过期兜底:用新密码重新 signIn 让 session 刷一次
+        if (/session/i.test(updateErr.message || '')) {
+          const { error: reAuthErr } = await supabase.auth.signInWithPassword({
+            email: user.email,
+            password: pwNew,
+          })
+          if (reAuthErr) throw new Error('改密失败，请重新登录后再试')
+        } else {
+          throw updateErr
+        }
+      }
+      setPwMsg({ type: 'success', text: '✅ 密码已更新' })
+      setPwCurrent('')
+      setPwNew('')
+      setPwConfirm('')
+      setTimeout(() => {
+        setPwExpanded(false)
+        setPwMsg(null)
+      }, 1800)
+    } catch (e) {
+      setPwMsg({ type: 'error', text: e?.message || '改密失败' })
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-bg-main">
       <header className="px-4 py-3 bg-white border-b border-gray-200 flex items-center gap-3">
@@ -219,6 +278,70 @@ const Settings = () => {
               <LogOut size={14} />
               退出登录
             </button>
+          </div>
+
+          {/* 修改密码 —— 默认折叠 */}
+          <div className="border-t border-gray-100 pt-3 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setPwExpanded((v) => !v)
+                setPwMsg(null)
+              }}
+              className="text-sm flex items-center gap-1.5 text-gray-700 hover:text-gray-900 transition-colors"
+            >
+              {pwExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              修改密码
+            </button>
+            {pwExpanded && (
+              <div className="mt-3 space-y-2 pl-5 border-l-2 border-gray-100">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">当前密码</label>
+                  <input
+                    type="password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    autoComplete="current-password"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#0077B6] focus:ring-2 focus:ring-[#0077B6]/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">新密码（至少 8 位）</label>
+                  <input
+                    type="password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#0077B6] focus:ring-2 focus:ring-[#0077B6]/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">确认新密码</label>
+                  <input
+                    type="password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#0077B6] focus:ring-2 focus:ring-[#0077B6]/20"
+                  />
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleChangePassword}
+                    disabled={pwSaving}
+                    className="text-sm px-3 py-1.5 bg-[#0077B6] text-white rounded-lg hover:bg-[#005f8c] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {pwSaving ? '保存中...' : '保存新密码'}
+                  </button>
+                  {pwMsg && (
+                    <span className={`text-xs ${pwMsg.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                      {pwMsg.text}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
