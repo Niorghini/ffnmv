@@ -138,10 +138,12 @@ export class SyncManager {
     if (error) throw error
 
     if (cloudRows && cloudRows.length > 0) {
+      const localRows = []
       const ts = nowIso(this.clock)
       await this.db.transaction('rw', this.db[entity], async () => {
         for (const cloudRow of cloudRows) {
           const localRow = stripUserId(cloudRow)
+          localRows.push(localRow)
           const pk = pkOf(entity, localRow)
           const existing = await this.db[entity].get(pk)
           if (!existing) {
@@ -167,7 +169,9 @@ export class SyncManager {
         .reduce((m, t) => (t > m ? t : m), lastSyncAt)
       await this.db.sync_metadata.put({ key: lastKey, value: maxUpdatedAt })
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity, source: 'pull' } }))
+        window.dispatchEvent(new CustomEvent('data-updated', {
+          detail: { entityType: entity, source: 'pull', rows: localRows }
+        }))
       }
     }
 
@@ -201,22 +205,27 @@ export class SyncManager {
       const cloudIds = new Set((cloudList || []).map((r) => r[idCol]))
 
       const localRows = await this.db[entity].toArray()
-      let removed = 0
+      const removedIds = []
       for (const local of localRows) {
         if (cloudIds.has(local[idCol])) continue
         // pending/failed：让 push 处理，删了会丢本地未同步改动
         if (local.sync_status === 'pending' || local.sync_status === 'failed') continue
         // 真硬删：物理删本地（notes 的 trash 副本也一并清——A 端已硬删，trash 留着没意义）
+        let pkStr
         if (entity === 'note_tags') {
           await this.db.note_tags.delete([local.note_id, local.tag_id])
+          pkStr = `${local.note_id}:${local.tag_id}`
         } else {
           await this.db[entity].delete(local.id)
+          pkStr = local.id
         }
-        removed++
+        removedIds.push(pkStr)
       }
-      if (removed > 0) {
+      if (removedIds.length > 0) {
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity } }))
+          window.dispatchEvent(new CustomEvent('data-updated', {
+            detail: { entityType: entity, source: 'cleanup', removed: removedIds }
+          }))
         }
       }
     } catch (e) {
@@ -330,23 +339,28 @@ export class SyncManager {
     if (newRow?.last_sync_device === this.deviceId) return
 
     const ts = nowIso(this.clock)
+    let dispatchDetail = { entityType: entity, source: 'realtime' }
     await this.db.transaction('rw', this.db[entity], async () => {
       if (eventType === 'DELETE') {
         const pk = pkOf(entity, oldRow)
         const existing = await this.db[entity].get(pk)
         if (existing && existing.sync_status === 'pending') return
         await this.db[entity].delete(pk)
+        const pkStr = Array.isArray(pk) ? pk.join(':') : pk
+        dispatchDetail = { ...dispatchDetail, removed: [pkStr] }
       } else {
         const localRow = stripUserId(newRow)
         const pk = pkOf(entity, localRow)
         const existing = await this.db[entity].get(pk)
         if (!existing) {
           await this.db[entity].put({ ...localRow, sync_status: 'synced', last_synced_at: ts })
+          dispatchDetail = { ...dispatchDetail, rows: [localRow] }
         } else if (localRow.version > existing.version) {
           if (existing.sync_status === 'pending') {
             await this._handleConflict(entity, existing, newRow)
           } else {
             await this.db[entity].put({ ...localRow, sync_status: 'synced', last_synced_at: ts })
+            dispatchDetail = { ...dispatchDetail, rows: [localRow] }
           }
         }
         // 同/低 version：跳过
@@ -355,7 +369,7 @@ export class SyncManager {
 
     this.onLocalChange?.(entity)
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity } }))
+      window.dispatchEvent(new CustomEvent('data-updated', { detail: dispatchDetail }))
     }
   }
 

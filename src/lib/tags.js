@@ -64,8 +64,10 @@ export const colorFromName = (name) => {
   return `hsl(${hue}, 55%, 55%)`
 }
 
-// 派发数据变更事件（SyncManager 监听后会立即同步）
-export const emitDataUpdated = (entityType) => {
+// 派发数据变更事件（SyncManager 监听后会立即同步,Stores 监听后做增量更新）
+// EFF-002: 支持带 rows(新增/更新行) 或 removed(删除 id 列表) 让 Store 走增量
+// 不带 → 走全量 reload(向后兼容)
+export const emitDataUpdated = (entityType, options = {}) => {
   if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType } }))
+  window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType, ...options } }))
 }

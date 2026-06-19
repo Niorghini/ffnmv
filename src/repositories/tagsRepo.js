@@ -40,7 +40,8 @@ export const tagsRepo = {
     if (cleaned.length === 0) return []
 
     const result = []
-    const toCreate = []
+    const toCreateNames = []
+    const toCreateTags = []
 
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.where('name').anyOf(cleaned).toArray()
@@ -50,10 +51,10 @@ export const tagsRepo = {
         if (found) {
           result.push(found)
         } else {
-          toCreate.push(name)
+          toCreateNames.push(name)
         }
       }
-      for (const name of toCreate) {
+      for (const name of toCreateNames) {
         const tag = {
           id: uuidv4(),
           name,
@@ -68,9 +69,10 @@ export const tagsRepo = {
         await db.tags.add(tag)
         await enqueue('create', tag.id)
         result.push(tag)
+        toCreateTags.push(tag)
       }
     })
-    if (toCreate.length > 0) emitDataUpdated('tags')
+    if (toCreateTags.length > 0) emitDataUpdated('tags', { rows: toCreateTags })
     return result
   },
 
@@ -115,7 +117,7 @@ export const tagsRepo = {
       await db.tags.put(updated)
       await enqueue('update', id)
     })
-    emitDataUpdated('tags')
+    emitDataUpdated('tags', { rows: [updated] })
     return updated
   },
 
@@ -139,7 +141,7 @@ export const tagsRepo = {
       await db.tags.put(updated)
       await enqueue('update', id)
     })
-    emitDataUpdated('tags')
+    emitDataUpdated('tags', { rows: [updated] })
     return updated
   },
 
@@ -189,6 +191,7 @@ export const tagsRepo = {
     const ts = nowIso()
     let source
     let target
+    let deletedSource
     await db.transaction('rw', db.tags, db.note_tags, db.sync_queue, async () => {
       source = await db.tags.get(sourceId)
       target = await db.tags.get(targetId)
@@ -245,17 +248,17 @@ export const tagsRepo = {
         }
       }
       // 软删除 source
-      const updated = {
+      deletedSource = {
         ...source,
         deleted_at: ts,
         updated_at: ts,
         version: source.version + 1,
         sync_status: 'pending',
       }
-      await db.tags.put(updated)
+      await db.tags.put(deletedSource)
       await enqueue('delete', sourceId)
     })
-    emitDataUpdated('tags')
+    emitDataUpdated('tags', { rows: [deletedSource] })
     return { source, target }
   },
 

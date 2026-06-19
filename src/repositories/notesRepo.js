@@ -61,7 +61,8 @@ export const notesRepo = {
         await enqueueTagAttach(id, tagId)
       }
     })
-    emitDataUpdated('notes')
+    emitDataUpdated('notes', { rows: [note] })
+    emitDataUpdated('note_tags', { rows: tagIds.map((tagId) => ({ note_id: id, tag_id: tagId, deleted_at: null })) })
     return note
   },
 
@@ -142,7 +143,8 @@ export const notesRepo = {
         })
       }
     })
-    emitDataUpdated('notes')
+    emitDataUpdated('notes', { rows: [updated] })
+    // note_tags 关联变化(attach/detach)由 store 自决定: 简单走全量 reload
     emitDataUpdated('note_tags')
     return updated
   },
@@ -174,7 +176,7 @@ export const notesRepo = {
       await db.notes.put(updated)
       await enqueue('update', id)
     })
-    emitDataUpdated('notes')
+    emitDataUpdated('notes', { rows: [updated] })
     return updated
   },
 
@@ -221,7 +223,8 @@ export const notesRepo = {
         })
       }
     })
-    emitDataUpdated('notes')
+    // 软删 = 视图移除(notes store/trash store 自己 filter deleted_at)
+    emitDataUpdated('notes', { rows: [updated] })
     emitDataUpdated('note_tags')
     return updated
   },
@@ -270,7 +273,7 @@ export const notesRepo = {
         })
       }
     })
-    emitDataUpdated('notes')
+    emitDataUpdated('notes', { rows: [updated] })
     emitDataUpdated('note_tags')
     return updated
   },
@@ -330,7 +333,8 @@ export const notesRepo = {
       }
       await db.notes.delete(id)
     })
-    emitDataUpdated('notes')
+    // 物理删 → 视图移除 + trash 也移除
+    emitDataUpdated('notes', { removed: [id] })
     emitDataUpdated('note_tags')
 
     // 3. 自动清理：扫一下「这个 note 用过」的 tag，如果现在没有任何活跃 link + 没软删，hardDelete
@@ -394,7 +398,7 @@ export const notesRepo = {
       await db.notes.put(updated)
       await enqueue('update', id)
     })
-    emitDataUpdated('notes')
+    emitDataUpdated('notes', { rows: [updated] })
     return updated
   },
 

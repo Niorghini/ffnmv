@@ -138,8 +138,10 @@ const resolve = async (conflict, choice) => {
   }
   // 删除冲突记录
   await db.conflicts.delete(conflict.id)
-  // 通知 UI
+  // 通知 UI:EFF-002 带 rows 让 store 走增量
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('data-updated', { detail: { entityType: entity_type } }))
+    window.dispatchEvent(new CustomEvent('data-updated', {
+      detail: { entityType: entity_type, rows: [finalRow] },
+    }))
   }
 }
