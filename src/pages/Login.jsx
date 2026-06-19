@@ -50,6 +50,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <img src={logoUrl} alt="发法牛" className="h-12 mx-auto" />
+          <p className="text-sm text-gray-400">发布的想法都很牛！</p>
         </div>
 
         {!configured && (
