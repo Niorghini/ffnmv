@@ -16,6 +16,9 @@ let started = false
 const bindStoreUpdates = (sm) => {
   sm.onSyncStateChange = (partial) => {
     useSyncStore.getState().setPartial(partial)
+    if (partial.lastSyncAt) {
+      useSyncStore.getState().recordSyncTime(partial.lastSyncAt)
+    }
   }
   sm.onConflict = () => {
     useConflictsStore.getState().load()

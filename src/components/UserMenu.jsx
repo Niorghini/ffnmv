@@ -10,8 +10,9 @@ import { useSyncStore } from '@/stores/useSyncStore'
 
 const UserMenu = ({ onSync }) => {
   const { user, signOut } = useAuthStore()
-  const { status, pending, online, lastSyncAt, error } = useSyncStore()
+  const { status, pending, online, lastSyncAt, error, lastSyncTimes } = useSyncStore()
   const [open, setOpen] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -111,15 +112,36 @@ const UserMenu = ({ onSync }) => {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onSync}
-          className="p-1 text-gray-400 hover:text-[#0077B6] transition-colors"
-          title="立即同步"
-          aria-label="立即同步"
+        <div
+          className="relative inline-block"
+          onMouseEnter={() => setShowHistory(true)}
+          onMouseLeave={() => setShowHistory(false)}
         >
-          <RefreshCw size={14} />
-        </button>
+          <button
+            type="button"
+            onClick={onSync}
+            className="p-1 text-gray-400 hover:text-[#0077B6] transition-colors"
+            aria-label="立即同步"
+          >
+            <RefreshCw size={14} />
+          </button>
+          {showHistory && (
+            <div className="absolute right-0 top-full mt-1 z-20 min-w-[180px] max-w-[240px] bg-white rounded-lg shadow-md border border-gray-100 py-2 px-3 text-xs animate-fadeInScale origin-top-right">
+              <div className="text-gray-500 mb-1.5">最近同步完成时间</div>
+              {lastSyncTimes.length === 0 ? (
+                <div className="text-gray-400 italic">暂无完成记录</div>
+              ) : (
+                <ul className="space-y-1">
+                  {lastSyncTimes.map((ts) => (
+                    <li key={ts} className="text-gray-700 truncate">
+                      {new Date(ts).toLocaleString('zh-CN')}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

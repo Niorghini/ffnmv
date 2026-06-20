@@ -14,8 +14,14 @@ export const useSyncStore = create((set, get) => ({
   error: null,
   pending: 0,
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  lastSyncTimes: [],
 
   setPartial: (partial) => set(partial),
+
+  recordSyncTime: (ts) =>
+    set((state) => ({
+      lastSyncTimes: [ts, ...state.lastSyncTimes.filter((t) => t !== ts)].slice(0, 10),
+    })),
 
   setOnline: (online) => {
     set({ online })

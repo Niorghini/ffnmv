@@ -351,10 +351,15 @@ const renderContentWithTags = (content, tagByName, onTagClick) => {
 const formatTime = (iso) => {
   const d = new Date(iso)
   const now = new Date()
+  const hh = d.getHours().toString().padStart(2, '0')
+  const mm = d.getMinutes().toString().padStart(2, '0')
   if (d.toDateString() === now.toDateString()) {
-    return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`
+    return `${d.getHours()}:${mm}`
   }
-  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+  if (d.getFullYear() !== now.getFullYear()) {
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
+  }
+  return `${d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} ${hh}:${mm}`
 }
 
 export default NoteList
