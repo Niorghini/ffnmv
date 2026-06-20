@@ -13,6 +13,7 @@
 | `deploy-nginx.sh` | 部署 nginx 配置 | — |
 | `deploy-rate-limit.sh` | 部署 Supabase 登录限速 env + compose patch | — |
 | `deploy-password.sh` | 部署密码最小长度(对齐前端 8 位) | — |
+| `deploy-disable-email.sh` | 关闭 prod 邮箱确认(SMTP 没配时的降级方案) | — |
 
 ## 当前覆盖的安全评估项
 
@@ -155,4 +156,45 @@ git push origin dev-loginadv
 - **SEC-003 密码 8 位**:老账号 6 位密码仍可 signin(GoTrue signin 不检查 min_length),改密时会被前后端双双拦住
 - **EFF-002 增量更新**:devtools Performance 录一段同步,主线程占用应明显降(单条 Realtime 变更从 ~50ms reload → ~1ms Map 替换)
 - **EFF-003 lazy load**:Network 面板可见 `MainApp-*.js` 立即加载,`Settings/Trash` 按需加载
+
+---
+
+## v1.3.0.1 patch (2026-06-20) — 关掉 prod 邮箱确认
+
+### 问题
+
+prod 118.89.118.126 的 `.env` 配的是 `SMTP_HOST=supabase-mail`(期望 inbucket 容器),但 `docker-compose.yml` 里**根本没有声明 supabase-mail service**。结果:
+- `ENABLE_EMAIL_AUTOCONFIRM=false` 要求邮箱确认
+- 但 `supabase-mail` DNS 解析失败 (`lookup supabase-mail on 127.0.0.11:53: server misbehaving`)
+- → 注册时 GoTrue 在事务里建 user + 发邮件,邮件失败 → 整个事务回滚 → **用户从未落库**
+- → 用户看到 500 "Error sending confirmation email",永远注册不了
+
+用户 `yatyeung@163.com` 试了 4 次都失败。audit log 里有 `user_confirmation_requested` 事件但 `auth.users` 里 0 行(回滚导致)。
+
+### 临时修复
+
+`bash ops/deploy-disable-email.sh` 做了:
+- 备份 `.env` → `.env.bak.disableemail.<时间戳>`
+- `ENABLE_EMAIL_AUTOCONFIRM=true`(让 GoTrue 自动确认,跳过邮件流程)
+- `docker compose up -d --force-recreate --no-deps auth`(让新 env 生效)
+
+**效果**:注册立即 200 + 返回 access_token + `email_confirmed_at` 自动设,无需邮件。
+
+### ⚠️ 安全 trade-off
+
+这是**降级方案**:
+- ✅ 注册流程能用了
+- ❌ **任何人都能用任意邮箱注册**(SEC-002 防抢注完全暴露)
+- ❌ 之前评估 item 4 "Supabase 邮件验证" 失效
+
+### 何时恢复(接真 SMTP 后)
+
+1. 注册 SMTP provider(Resend 免费 3K/月、SendGrid 免费 100/天)
+2. 改 `.env` 5-6 个变量:
+   - `SMTP_HOST=<provider host>`
+   - `SMTP_PORT=587` / `SMTP_SECURE=true` 等
+   - `SMTP_USER` / `SMTP_PASS` / `SMTP_ADMIN_EMAIL`
+3. 改回 `ENABLE_EMAIL_AUTOCONFIRM=false` + `docker compose up -d --force-recreate --no-deps auth`
+4. (可选) `supabase/config.toml` 改 `enable_confirmations = true` 让本地 dev 也一致
+5. 在 `docker-compose.yml` auth service 加 `GOTRUE_MAILER_EXTERNAL_HOSTS: 118.89.118.126`(消除 log 里的 "external host not added" 警告)
 
