@@ -34,6 +34,17 @@ bash ops/deploy-rate-limit.sh
 
 两个脚本都是**幂等的**:重跑会跳过已存在的配置,但会创建新的 `.bak.<时间戳>` 备份。
 
+## Cache 策略(2026-06-20 加)
+
+部署后用户浏览器不会拉错 hash 的旧 chunk:
+- `/` → `Cache-Control: no-cache, no-store, must-revalidate`(永远拉最新 index.html)
+- `/assets/*.js` → `Cache-Control: public, max-age=31536000, immutable`(永久缓存,hash 文件名永不变)
+- 其他路径 → SPA fallback(原行为)
+
+**为什么需要**:之前每次部署(换 hash)后,用户浏览器还缓存旧 index.html,旧 index.html 引用
+旧 hash 的 chunk,旧 chunk 已被新部署删了 → nginx SPA fallback 返 text/html → 浏览器报
+"Expected a JavaScript module script but the server responded with a MIME type of text/html"
+
 ## 验证
 
 部署后跑这套命令,全过才算完事:
