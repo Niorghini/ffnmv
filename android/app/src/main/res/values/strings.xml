@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">发法牛</string>
+    <string name="title_activity_main">发法牛</string>
+    <string name="package_name">com.aicyber.ffnmv</string>
+    <string name="custom_url_scheme">com.aicyber.ffnmv</string>
+</resources>
