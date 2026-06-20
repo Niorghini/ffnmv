@@ -101,3 +101,58 @@ git commit -m "feat(ops): <描述>"
 git push origin dev-loginadv
 # 实际部署: bash ops/deploy-<xxx>.sh
 ```
+
+---
+
+## v1.3.0 release notes (2026-06-20)
+
+11 个新 commit 推到 main:`b625ed4..14e58ae`
+
+### 🔐 安全 (覆盖安全评估 11 项里的 item 2/3/5/6/7/8)
+
+| commit | 改动 | 文件 |
+|---|---|---|
+| `63cc3e7` | nginx 加 6 个安全头 + gzip 调优 + 登录限速 4 条 location | `ops/nginx.conf` `ops/rate-limit.conf` |
+| `6593827` | 本地 dev `[auth.rate_limit]` 跟 prod 一致(supabase/config.toml 数值) | `supabase/config.toml` |
+| `d5be90f` | **SEC-003** 密码最小长度后端对齐 8 位 | `supabase/config.toml` + `ops/deploy-password.sh` + `ops/snippets/auth-password-min-length.yml` |
+| (跟随 `63cc3e7`) | **SEC-002** 配置 + 部署脚本:登录限速双层(nginx limit_req 10r/m + Supabase GOTRUE_RATE_LIMIT_*) | `ops/deploy-rate-limit.sh` + `ops/snippets/auth-rate-limit.yml` |
+
+### 🚀 效率 (4 项 EFF-001/002/003 + EFF 性能)
+
+| commit | 改动 | 文件 |
+|---|---|---|
+| `61d701c` | **EFF-003** 路由 lazy load:MainApp/Settings/Trash 独立 chunk,首屏 index.js 79KB → 30KB | `src/App.jsx` |
+| `ffa72d4` | **EFF-001** Dexie schema v4→5 加 `archived_at` 索引,`getAll()` filter 改链式 | `src/lib/db.js` `src/repositories/notesRepo.js` |
+| `df050e1` | **EFF-002** `data-updated` 事件带 `rows`/`removed` 增量,3 store 改 Map 索引增量更新 | `src/lib/tags.js` `src/lib/syncManager.js` `src/repositories/{notesRepo,tagsRepo}.js` `src/stores/{useNotesStore,useTagsStore,useTrashStore}.js` `src/components/ConflictDialog.jsx` + 5 新 store tests |
+
+### 🛠 工具 (ops/)
+
+| commit | 改动 | 文件 |
+|---|---|---|
+| `63cc3e7` | 新增 `ops/` 目录:deploy-nginx.sh / deploy-rate-limit.sh + snippets/ + README | `ops/*` |
+| `e951026` | vite.config.js 加 `VITE_BASE` 支持(ffn-pre/ canary build 用)+ `.env.ffn-pre` 进 .gitignore | `vite.config.js` `.gitignore` |
+
+### 📦 Release
+
+| commit | 改动 | 文件 |
+|---|---|---|
+| `2323220` | `package.json` 1.2.1 → 1.3.0 | `package.json` |
+| `ed40730` | 浏览器 tab title v1.3.0 同步 + `.env.production` 进 .gitignore(防 prod ANON_KEY 误推) | `src/main.jsx` `.gitignore` |
+| `14e58ae` | `src/index.html` 静态 `<title>` 同步 v1.3.0(release 后补) | `index.html` |
+
+### 部署状态
+
+| 目标 | 状态 |
+|---|---|
+| 118.89.118.126 (prod) | ✅ 已部署 v1.3.0,旧 `index-BmI4P9xV.js` 删,新 `index-LGNUZcRE.js` + 3 lazy chunk |
+| 163.7.3.215 /ffn-pre/ (canary) | ✅ 已部署,white-page 修了两件事:1) supabase-auth 容器因 `.env` 里 `GOTRUE_RATE_LIMIT_*_REFRESH=150/1h` 格式错反复 crash(改成裸数字 30);2) nginx CSP 缺单引号 `script-src self` 应为 `script-src 'self'`(已 sed 修复) |
+| GitHub `main` | ✅ 11 个新 commit `b625ed4..14e58ae` |
+| GitHub `dev-loginadv` | ✅ 新分支保留 feature 提交 |
+
+### 用户首次进站会发生的事
+
+- **EFF-001 schema v4→5**:IndexedDB 自动升级,加 `archived_at` 索引 + 规范化历史 `undefined` 为 `null`。无 UI 变化,首次访问几百毫秒无感
+- **SEC-003 密码 8 位**:老账号 6 位密码仍可 signin(GoTrue signin 不检查 min_length),改密时会被前后端双双拦住
+- **EFF-002 增量更新**:devtools Performance 录一段同步,主线程占用应明显降(单条 Realtime 变更从 ~50ms reload → ~1ms Map 替换)
+- **EFF-003 lazy load**:Network 面板可见 `MainApp-*.js` 立即加载,`Settings/Trash` 按需加载
+
