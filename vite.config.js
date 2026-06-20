@@ -2,7 +2,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// base: 生产 = '/', ffn-pre/ canary = '/ffn-pre/'
+// build 时设 VITE_BASE 环境变量,不设就默认 '/'
+const base = process.env.VITE_BASE || '/'
+
 export default defineConfig({
+  base,
   plugins: [react()],
   resolve: {
     alias: {
