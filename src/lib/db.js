@@ -26,9 +26,17 @@ db.version(DB_VERSION)
     cache: 'key, expires_at',
   })
   .upgrade(async (tx) => {
-    // v0.7.0 → v1.2：旧 'memos' store 不在 schema 中，升级时显式删除
-    if (tx.db.objectStoreNames.contains('memos')) {
-      tx.db.deleteObjectStore('memos')
+    // v0.7.0 → v1.2:旧 'memos' store 不在 schema 中,升级时显式删除
+    // 2026-06-20 防御:某些浏览器/Dexie 边界下 tx.db.objectStoreNames 是 undefined,
+    // 包 try/catch + 限定 oldVersion<2 才需要清(只有 v0.7.0 v1 才有 memos)
+    if (tx.oldVersion < 2) {
+      try {
+        if (tx.db?.objectStoreNames?.contains('memos')) {
+          tx.db.deleteObjectStore('memos')
+        }
+      } catch (e) {
+        console.warn('[db] legacy memos cleanup skipped:', e?.message || e)
+      }
     }
     // v4 → v5: 规范化 archived_at 字段(undefined → null),保证新索引覆盖全表
     if (tx.oldVersion < 5) {
@@ -114,8 +122,14 @@ const makeFreshDb = () => {
     conflicts: 'id, entity_type, entity_id, created_at',
     cache: 'key, expires_at',
   }).upgrade(async (tx) => {
-    if (tx.db.objectStoreNames.contains('memos')) {
-      tx.db.deleteObjectStore('memos')
+    if (tx.oldVersion < 2) {
+      try {
+        if (tx.db?.objectStoreNames?.contains('memos')) {
+          tx.db.deleteObjectStore('memos')
+        }
+      } catch (e) {
+        console.warn('[db] legacy memos cleanup skipped:', e?.message || e)
+      }
     }
     if (tx.oldVersion < 5) {
       await tx.table('notes').toCollection().modify((n) => {
