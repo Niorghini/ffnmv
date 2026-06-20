@@ -12,6 +12,17 @@ body {
   background-color: #F5F6F7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  padding-top: var(--safe-top, 0px); /* 沉浸式状态栏安全区,main.jsx 在 native 平台 setProperty */
+}
+
+/* Android 触摸规范：最小 44px 命中区，避免误触 */
+@layer base {
+  button, a, input, textarea, select, [role="button"] {
+    min-height: 44px;
+  }
+  button, a, [role="button"] {
+    min-width: 44px;
+  }
 }
 
 /* 滚动条样式 */

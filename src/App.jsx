@@ -7,7 +7,7 @@
  * - 启动 cleanup
  */
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { openDb, wasLegacyCleaned, markLegacyCleaned } from '@/lib/db'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { startSync, stopSync } from '@/lib/syncInstance'
@@ -84,7 +84,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <>
       {user ? <AuthedRoutes /> : <Login />}
       {showLegacyToast && (
         <Toast
@@ -93,7 +93,7 @@ function App() {
           onClose={() => setShowLegacyToast(false)}
         />
       )}
-    </BrowserRouter>
+    </>
   )
 }
 

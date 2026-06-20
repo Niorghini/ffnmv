@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {
@@ -10,7 +11,7 @@ export default defineConfig({
     },
   },
   build: {
-    // 性能:拆 vendor chunk,主 bundle 从 553KB → ~250KB,首屏下载/解析快一倍
+    target: 'es2020', // Android 7.0+ WebView 最低支持
     rollupOptions: {
       output: {
         manualChunks: {
