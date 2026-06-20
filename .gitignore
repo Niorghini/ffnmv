@@ -13,3 +13,4 @@ supabase/.branches
 supabase/.temp
 supabase/.env
 .env.ffn-pre
+.env.production
