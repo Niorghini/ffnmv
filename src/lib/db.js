@@ -103,7 +103,9 @@ const deleteDb = () =>
   new Promise((resolve) => {
     try {
       if (db.isOpen()) db.close()
-    } catch {}
+    } catch {
+      // isOpen 可能抛错（db 状态异常），忽略让后续 reset 走完
+    }
     const req = indexedDB.deleteDatabase(DB_NAME)
     req.onsuccess = () => resolve()
     req.onerror = () => resolve() // 失败也继续，让 open 失败再处理

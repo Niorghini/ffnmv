@@ -15,3 +15,14 @@ supabase/.env
 .env.production
 .env.test
 .env.canary
+
+# android（PR 9 才会真有 android/ 目录，提前加避免 keystore/gradle 误提交）
+android/keystore/
+*.keystore
+*.jks
+key.properties
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/

@@ -20,7 +20,7 @@ import logoUrl from '/logo.png'
 
 const MainApp = () => {
   const { user } = useAuthStore()
-  const { activeId, setActiveId, setActiveTagId, searchQuery, setSearchQuery, load } = useNotesStore()
+  const { activeId, setActiveId, activeTagId, setActiveTagId, searchQuery, setSearchQuery, load } = useNotesStore()
 
   useEffect(() => {
     load()
