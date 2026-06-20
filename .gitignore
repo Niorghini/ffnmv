@@ -12,5 +12,6 @@ dist/
 supabase/.branches
 supabase/.temp
 supabase/.env
-.env.ffn-pre
 .env.production
+.env.test
+.env.canary

@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --mode production",
+    "build:test": "vite build --mode test",
+    "build:canary": "vite build --mode canary",
+    "build:prod": "vite build --mode production",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
