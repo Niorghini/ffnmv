@@ -1,6 +1,6 @@
 # 发法牛 - 发布的想法都很牛！
 
-📝 一款简洁高效的本地优先笔记应用，让记录想法变得轻松自如。**v1.2 起支持多端实时同步**。当前版本 **v1.3.1**。
+📝 一款简洁高效的本地优先笔记应用，让记录想法变得轻松自如。**v1.2 起支持多端实时同步**。当前 Web 版本 **v1.3.1**，Android 版本 **v1.0**。
 
 > 域名体系（2026-06-20 起域名化）：
 > - 生产：[https://ffn.aicyber.chat](https://ffn.aicyber.chat)（`118.89.118.126` · Tencent Lighthouse）
@@ -125,7 +125,8 @@ main 分支  ──→ ffn.aicyber.chat (118.89.118.126)   ←  生产
 - **状态**: Zustand（6 个 store）
 - **本地数据库**: Dexie.js 4.x（IndexedDB 封装，7-store schema）
 - **云端**: Supabase（Postgres + RLS + Realtime；生产自建 6 容器最小栈）
-- **测试**: Vitest 2 + @testing-library/react + fake-indexeddb + happy-dom
+- **测试**: Vitest 2 + @testing-library/react + fake-indexeddb + happy-dom（166 tests）
+- **Android**: Capacitor 8 + WebView + Gradle 8（`captureInput=false`, allowBackup=false, minSdk=24, targetSdk=36）
 - **图标**: Lucide React
 - **后端部署**: 腾讯云轻量应用服务器 + Docker 29 + nginx 1.24（自托管 Supabase）
 
@@ -133,9 +134,12 @@ main 分支  ──→ ffn.aicyber.chat (118.89.118.126)   ←  生产
 
 ## 📦 版本信息
 
-**当前版本**: v1.3.1（2026-06-20）
+| 平台 | 版本 | 备注 |
+|---|---|---|
+| Web (HTML5) | v1.3.1 | `package.json`，main 分支部署 |
+| Android | v1.0 | `android/app/build.gradle` `versionCode=1`，dev-android 分支 |
 
-### v1.3.1（2026-06-20）
+### Web v1.3.1（2026-06-20）
 - 🆕 同步按钮 hover 浮层显示最近 10 次完成时间
 - 🆕 笔记时间显示到时分（三级时间格式）
 - 完整 changelog：4b1ebb7 / a9ec97a / 007e02c
@@ -169,7 +173,7 @@ npm test             # 一次性跑全套（160 个测试）
 npm run test:watch   # watch 模式
 ```
 
-当前 **15 个 test 文件 / 160 个测试**，覆盖：
+当前 **16 个 test 文件 / 166 个测试**，覆盖：
 
 - Dexie 7-store 创建/索引/CRUD
 - 仓库层 `create/update/softDelete/restore/merge/version bump/sync_queue` 入队
@@ -278,14 +282,28 @@ ffnmv/
 
 ---
 
-## 📱 移动端计划
+## 📱 移动端
 
-| 平台 | 方案 | 计划文档 | 估时 | 状态 |
-|---|---|---|---|---|
-| Android | Capacitor 6 包装现有 Web | [`docs/plan-android.md`](./docs/plan-android.md) v3 | 9.75–10.75 人天 | 待启动 |
-| 微信小程序 | Taro 4 重写前端 | [`docs/plan-wechat-miniprogram.md`](./docs/plan-wechat-miniprogram.md) v2 | 10.5–12.5 人天 | 待启动 |
+| 平台 | 方案 | 计划文档 | 状态 |
+|---|---|---|---|
+| **Android** | Capacitor 8 包装现有 Web（`npm run android:apk:release` 出包） | [`docs/plan-android.md`](./docs/plan-android.md) v3 | ✅ 已完成（v1.0, 2026-06-21） |
+| 微信小程序 | Taro 4 重写前端 | [`docs/plan-wechat-miniprogram.md`](./docs/plan-wechat-miniprogram.md) v2 | 待启动 |
 
-两份计划都含完整的安全 / 效率评估、变更日志、风险登记、SOP 模板。
+### Android 构建（首次 ~30min，后续 ~2min）
+
+```bash
+# 前置：JDK 21 + Android SDK（见 docs/android-build-guide.md）
+# 首次生成 keystore 并备份到 1Password（见 docs/android-maintain.md）
+
+npm run build:android          # web 构建 + cap sync
+npm run android:apk:release    # 出 release APK（~2.6MB）
+# APK → android/app/build/outputs/apk/release/app-release.apk
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+详见：
+- [`docs/android-build-guide.md`](./docs/android-build-guide.md) — 首次出包完整指南（JDK/SDK/keystore/踩坑）
+- [`docs/android-maintain.md`](./docs/android-maintain.md) — 日常运维 SOP（签名备份/回滚/版本号/Pre-commit Hook）
 
 ---
 
@@ -293,8 +311,9 @@ ffnmv/
 
 - 标签拖拽排序未实现
 - 每日自动备份未做
-- 移动端（Android / 微信小程序）计划已制定但未实施
+- 微信小程序计划已制定但未实施
 - `ffn-pre` 数据同步偶发空拉（`data-updated` 事件触发逻辑，待修复，2026-06-20 暂缓）
+- Android WebView 部分机型的 launcher 图标适配（vivo OriginOS 已适配 `#F2F2F2` 底色 + cow 40% 居中）
 
 ---
 
@@ -305,6 +324,7 @@ ffnmv/
 - 生产环境 `ffn.aicyber.chat` 强制 HTTPS + HSTS
 - 工厂重置：彻底清空本地 IndexedDB + Supabase 云端记录
 - Android / 微信小程序后续计划中均设计 Keystore / 沙箱存储 Token
+- Android v1.0 已采用 `capacitor-secure-storage-plugin`（Keystore）+ `captureInput=false` + `allowBackup=false`
 
 ---
 
