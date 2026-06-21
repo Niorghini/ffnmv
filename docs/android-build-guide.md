@@ -45,16 +45,20 @@ java -version   # 应显示 17.x
 brew install --cask android-commandlinetools
 
 # ⚠️ brew 把 SDK 装在 /opt/homebrew/share/android-commandlinetools/，**不是** ~/Library/Android/sdk
-# 用下面的命令自动探测真实路径：
-SDK_ROOT=$(brew --prefix android-commandlinetools)
-echo "SDK 装在: $SDK_ROOT"
-
-# 设环境变量（追加到 ~/.zshrc）
-export ANDROID_HOME="$SDK_ROOT"
-export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
+# brew --prefix 对 cask 不生效，直接用硬路径（已用 find 确认）：
+export ANDROID_HOME="/opt/homebrew/share/android-commandlinetools"
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 
 source ~/.zshrc
+```
+
+**确认 adb 路径**（避免 ANDROID_HOME 设错）：
+```bash
+ls $ANDROID_HOME/platform-tools/adb
+# 应输出：/opt/homebrew/share/android-commandlinetools/platform-tools/adb
+adb version
+# 应输出：Android Debug Bridge version 1.0.x
 ```
 
 **方式 B：手动下载（标准路径 `~/Library/Android/sdk`）**
@@ -252,19 +256,19 @@ cd android && ./gradlew clean
 `platform-tools` 没装或 `ANDROID_HOME` 设错路径。两种修法：
 
 ```bash
-# 修法 A：ANDROID_HOME 路径错（brew 用户最常见）
-# brew 把 SDK 装在 /opt/homebrew/share/，不是 ~/Library/Android/sdk
-SDK_ROOT=$(brew --prefix android-commandlinetools)
-echo "真实路径: $SDK_ROOT"
-export ANDROID_HOME="$SDK_ROOT"
+# 修法 A：ANDROID_HOME 路径错（brew 用户最常见，~50% 概率）
+# brew 把 SDK 装在 /opt/homebrew/share/android-commandlinetools/
+# 用 ls 确认 adb 在哪：
+find /opt/homebrew/share /Users/$USER/Library/Android -name "adb" -type f 2>/dev/null
+# 找到后，设 ANDROID_HOME 为 adb 所在 SDK 的根目录
+export ANDROID_HOME="/opt/homebrew/share/android-commandlinetools"   # 改成你找到的路径
 export PATH="$PATH:$ANDROID_HOME/platform-tools"
 source ~/.zshrc
-adb version   # 应该工作了
+adb version
 
 # 修法 B：platform-tools 真的没装
 sdkmanager "platform-tools"
-# 然后确认 ANDROID_HOME 路径里能找到
-ls $ANDROID_HOME/platform-tools/adb
+ls $ANDROID_HOME/platform-tools/adb   # 确认在
 ```
 
 ### 6.2 `SDK location not found`
