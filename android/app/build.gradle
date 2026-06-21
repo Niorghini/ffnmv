@@ -19,11 +19,11 @@ android {
     signingConfigs {
         release {
             // ⚠️ ffnmv-release.keystore 不入仓（见 .gitignore + docs/android-maintain.md 附录 C）
-            // CI/CD 用 KEYSTORE_PASSWORD / KEY_PASSWORD 环境变量或 GitHub Actions Secrets 注入
+            // 优先 env var（CI 用 GitHub Actions Secrets），fallback 到 ~/.gradle/gradle.properties（本地开发）
             storeFile file('../keystore/ffnmv-release.keystore')
-            storePassword System.getenv("KEYSTORE_PASSWORD")
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: project.findProperty("KEYSTORE_PASSWORD")
             keyAlias 'ffnmv'
-            keyPassword System.getenv("KEY_PASSWORD")
+            keyPassword System.getenv("KEY_PASSWORD") ?: project.findProperty("KEY_PASSWORD")
         }
     }
     buildTypes {
