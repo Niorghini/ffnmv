@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useSyncStore } from '@/stores/useSyncStore'
+import { signOutAndCleanup } from '@/lib/auth'
 
 const OPTIONS = [
   { value: 7, label: '7 天' },
@@ -25,7 +26,7 @@ const OPTIONS = [
 ]
 
 const Settings = () => {
-  const { user, signOut } = useAuthStore()
+  const { user } = useAuthStore()
   const { lastSyncAt } = useSyncStore()
   const [days, setDays] = useState(30)
   const [saved, setSaved] = useState(false)
@@ -272,7 +273,7 @@ const Settings = () => {
               立即同步
             </button>
             <button
-              onClick={signOut}
+              onClick={signOutAndCleanup}
               className="text-sm px-3 py-1.5 border border-red-500 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-1.5 transition-colors ml-auto"
             >
               <LogOut size={14} />

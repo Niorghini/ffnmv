@@ -57,3 +57,13 @@ export const stopSync = async () => {
 }
 
 export const isSyncStarted = () => started
+
+/**
+ * 清 syncManager 单例（登出后调用，确保下次 startSync 重新创建）
+ * - 不主动 stop（已 stop 的话是 no-op）
+ * - 重置 instance 和 started 标志
+ */
+export const resetSyncInstance = () => {
+  instance = null
+  started = false
+}

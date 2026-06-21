@@ -7,9 +7,10 @@ import { Link } from 'react-router-dom'
 import { ChevronDown, LogOut, RefreshCw, Settings, Trash2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useSyncStore } from '@/stores/useSyncStore'
+import { signOutAndCleanup } from '@/lib/auth'
 
 const UserMenu = ({ onSync }) => {
-  const { user, signOut } = useAuthStore()
+  const { user } = useAuthStore()
   const { status, pending, online, lastSyncAt, error, lastSyncTimes } = useSyncStore()
   const [open, setOpen] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -30,7 +31,7 @@ const UserMenu = ({ onSync }) => {
 
   const handleSignOut = async () => {
     setOpen(false)
-    await signOut()
+    await signOutAndCleanup()
   }
 
   const badge = (() => {

@@ -14,16 +14,19 @@ vi.mock('@/stores/useAuthStore', () => ({
 vi.mock('@/stores/useSyncStore', () => ({
   useSyncStore: vi.fn(),
 }))
+vi.mock('@/lib/auth', () => ({
+  signOutAndCleanup: vi.fn(),
+}))
 
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useSyncStore } from '@/stores/useSyncStore'
+import { signOutAndCleanup } from '@/lib/auth'
 import UserMenu from '@/components/UserMenu'
 
 const mockUser = { email: 'niorghini.test@gmail.com' }
-const mockSignOut = vi.fn()
 
-const setupStores = ({ user = mockUser, signOut = mockSignOut, sync = {} } = {}) => {
-  useAuthStore.mockImplementation(() => ({ user, signOut }))
+const setupStores = ({ user = mockUser, sync = {} } = {}) => {
+  useAuthStore.mockImplementation(() => ({ user }))
   useSyncStore.mockImplementation(() => ({
     status: 'idle',
     pending: 0,
@@ -38,7 +41,7 @@ const renderWithRouter = (ui, options) =>
 
 describe('UserMenu', () => {
   beforeEach(() => {
-    mockSignOut.mockClear()
+    signOutAndCleanup.mockClear()
   })
 
   it('未登录时返回 null', () => {
@@ -101,13 +104,13 @@ describe('UserMenu', () => {
     })
   })
 
-  it('点击登出调用 signOut', async () => {
+  it('点击登出调用 signOutAndCleanup', async () => {
     setupStores()
     renderWithRouter(<UserMenu onSync={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: /niorghini.test@gmail.com/ }))
     const signOutBtn = await screen.findByText('登出')
     fireEvent.click(signOutBtn)
-    expect(mockSignOut).toHaveBeenCalledTimes(1)
+    expect(signOutAndCleanup).toHaveBeenCalledTimes(1)
   })
 
   it('点击同步按钮调用 onSync', () => {
