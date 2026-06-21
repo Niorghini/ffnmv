@@ -8,7 +8,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,10 +29,31 @@ jobs:
       - name: Build (web)
         run: npm run build
 
-      - name: Upload dist artifact
+      - name: Build (android:test) + cap sync
+        run: npm run build:android:test
+
+      - name: Verify cap sync result is committed
+        # cap sync 修改了 android/app/src/main/assets/，但只应在本地生效。
+        # 如果 push 后这里仍有 diff，说明开发者忘 commit sync 结果 → CI 拦截。
+        run: |
+          if ! git diff --exit-code -- android/app/src/main/assets/ > /dev/null; then
+            echo "::error::android/ assets out of sync with dist/. Run 'npm run build:android:test' locally and commit the result."
+            git diff -- android/app/src/main/assets/ | head -30
+            exit 1
+          fi
+
+      - name: Upload web-dist artifact
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev-android'
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
+          path: dist/
+          retention-days: 7
+
+      - name: Upload android-test-bundle artifact
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev-android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-bundle
           path: dist/
           retention-days: 7
