@@ -38,11 +38,37 @@ java -version   # 应显示 17.x
 
 ### 1.2 Android SDK
 
-**macOS**：
+**macOS**（两种方式选一种）：
+
+**方式 A：brew（最简单）**
 ```bash
 brew install --cask android-commandlinetools
 
-# 设环境变量（追加到 ~/.zshrc 或 ~/.bashrc）
+# ⚠️ brew 把 SDK 装在 /opt/homebrew/share/android-commandlinetools/，**不是** ~/Library/Android/sdk
+# 用下面的命令自动探测真实路径：
+SDK_ROOT=$(brew --prefix android-commandlinetools)
+echo "SDK 装在: $SDK_ROOT"
+
+# 设环境变量（追加到 ~/.zshrc）
+export ANDROID_HOME="$SDK_ROOT"
+export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+
+source ~/.zshrc
+```
+
+**方式 B：手动下载（标准路径 `~/Library/Android/sdk`）**
+```bash
+# 1. 创建目录
+mkdir -p $HOME/Library/Android/sdk/cmdline-tools
+cd /tmp
+# 见 https://developer.android.com/studio#command-line-tools-only 获取最新 URL
+curl -O https://dl.google.com/android/repository/commandlinetools-mac-13114758_latest.zip
+unzip commandlinetools-mac-*.zip
+mv cmdline-tools $HOME/Library/Android/sdk/cmdline-tools/latest
+rm commandlinetools-mac-*.zip
+
+# 2. 设环境变量
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
@@ -50,12 +76,12 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 source ~/.zshrc
 ```
 
-**安装 SDK 组件**：
+**安装 SDK 组件**（两种方式都跑这个）：
 ```bash
 # 接受 license
 yes | sdkmanager --licenses
 
-# 装 platforms;android-36（Capacitor 8 默认 target SDK）+ build-tools
+# 装 platforms;android-36（Capacitor 8 默认 target SDK）+ build-tools + platform-tools（adb 在这里）
 sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 ```
 
@@ -84,9 +110,13 @@ sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 ```bash
 node -v        # ≥ 18
 java -version  # 17.x
-adb version    # Android Debug Bridge
-sdkmanager --list_installed  # 应含 platforms;android-36
+echo $ANDROID_HOME   # 应该是 brew 路径或 ~/Library/Android/sdk（看 §1.2 选的哪种）
+which adb            # 应输出 $ANDROID_HOME/platform-tools/adb
+adb version          # Android Debug Bridge Version 1.0.x
+sdkmanager --list_installed  # 应含 platforms;android-36、build-tools;36.0.0、platform-tools
 ```
+
+**如果 `which adb` 找不到**：ANDROID_HOME 设错了。回 §1.2 看是 brew 方式还是手动方式，路径对不上导致 platform-tools 找不到。
 
 ---
 
@@ -219,10 +249,22 @@ cd android && ./gradlew clean
 
 ### 6.1 `adb: command not found`
 
-`platform-tools` 没装或没在 PATH。重新装：
+`platform-tools` 没装或 `ANDROID_HOME` 设错路径。两种修法：
+
 ```bash
-sdkmanager "platform-tools"
+# 修法 A：ANDROID_HOME 路径错（brew 用户最常见）
+# brew 把 SDK 装在 /opt/homebrew/share/，不是 ~/Library/Android/sdk
+SDK_ROOT=$(brew --prefix android-commandlinetools)
+echo "真实路径: $SDK_ROOT"
+export ANDROID_HOME="$SDK_ROOT"
 export PATH="$PATH:$ANDROID_HOME/platform-tools"
+source ~/.zshrc
+adb version   # 应该工作了
+
+# 修法 B：platform-tools 真的没装
+sdkmanager "platform-tools"
+# 然后确认 ANDROID_HOME 路径里能找到
+ls $ANDROID_HOME/platform-tools/adb
 ```
 
 ### 6.2 `SDK location not found`
