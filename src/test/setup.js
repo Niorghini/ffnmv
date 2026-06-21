@@ -3,10 +3,31 @@
  * - 加载 fake-indexeddb（每个测试一个全新 IDB）
  * - 加载 jest-dom matchers
  * - 内存版 localStorage（happy-dom 20 的 localStorage 是空对象）
+ * - mock Capacitor 相关包（避免测试环境访问原生平台）
  */
 import 'fake-indexeddb/auto'
 import '@testing-library/jest-dom/vitest'
-import { afterEach, beforeEach } from 'vitest'
+import { vi, afterEach, beforeEach } from 'vitest'
+
+// mock capacitor-secure-storage-plugin：用 src/test/fakes/secureStorage.js 的内存 fake
+vi.mock('capacitor-secure-storage-plugin', async () => {
+  const { SecureStoragePlugin, __resetSecureStorageForTests } = await import('./fakes/secureStorage')
+  return { SecureStoragePlugin, __resetSecureStorageForTests }
+})
+
+// mock @capacitor/core：测试环境无原生平台，默认 web
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' },
+}))
+
+// mock @capacitor/network：默认在线，addListener 返回可移除的 handle
+vi.mock('@capacitor/network', () => ({
+  Network: {
+    getStatus: vi.fn().mockResolvedValue({ connected: true }),
+    addListener: vi.fn().mockReturnValue({ remove: vi.fn() }),
+    removeListener: vi.fn(),
+  },
+}))
 
 class MemoryStorage {
   constructor() {
