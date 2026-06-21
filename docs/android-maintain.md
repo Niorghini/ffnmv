@@ -177,6 +177,28 @@ PR 不通过 CI 不能 merge。
 - [ ] `assembleRelease` 后用 apkanalyzer 检查 APK 大小（arm64-v8a ≤ 8MB）
 - [ ] 第一版上线时启用 Google Play App Signing
 
+## 6.5 Pre-commit Hook（防御密钥误提交）
+
+仓库自带 `scripts/git-hooks/pre-commit`，本地装一下：
+
+```bash
+ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+chmod +x scripts/git-hooks/pre-commit
+```
+
+**Hook 会拦截**：
+- `*.keystore` / `*.jks` / `*.p12` / `*.pfx` / `key.properties` / `google-services.json` 入仓
+- `android/keystore/*` 任何文件
+- `android/local.properties`
+- 任何 staged 文件含真实 `KEYSTORE_PASSWORD=...` / `KEY_PASSWORD=...`（`docs/` 教学占位符和 hook 自身除外）
+
+**紧急跳过**（极不推荐）：
+```bash
+git commit --no-verify
+```
+
+**为什么不用 `git add -f` 强 add**：hook 会在 commit 阶段二次拦截。即便用 `-f` 强加了 keystore 文件，commit 时也会被 hook 拦下。
+
 ---
 
 ## 7. 故障排查

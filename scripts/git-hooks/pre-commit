@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Pre-commit hook: 阻止密钥/本地配置入仓
+#
+# 安装（一次性，任意项目成员都该装）：
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#
+# 跳过（紧急情况，不推荐）：
+#   git commit --no-verify
+set -e
+
+# 待 commit 的文件列表
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+violations=0
+
+# 1. 阻止密钥文件
+for f in $staged; do
+  case "$f" in
+    *.keystore|*.jks|*.p12|*.pfx|key.properties|google-services.json)
+      echo "❌ Pre-commit: 禁止提交 $f（密钥/凭证文件）"
+      violations=$((violations + 1))
+      ;;
+    android/keystore/*)
+      echo "❌ Pre-commit: 禁止提交 $f（整个 android/keystore/ 目录）"
+      violations=$((violations + 1))
+      ;;
+  esac
+done
+
+# 2. 阻止 local.properties 入仓（含 SDK 路径或可能的本地密钥）
+if echo "$staged" | grep -qx "android/local.properties"; then
+  echo "❌ Pre-commit: 禁止提交 android/local.properties（本地 SDK 路径，可能含敏感配置）"
+  violations=$((violations + 1))
+fi
+
+# 3. 扫 staged 内容里的真实密码（排除 docs 教学性占位符 + hook 自身）
+#    检测模式: KEYSTORE_PASSWORD= 后面跟非 < 开头的值
+for f in $staged; do
+  # 跳过 docs/（教学性占位符是预期的）和 .md 文件
+  case "$f" in
+    docs/*|*.md) continue ;;
+    # 跳过 hook 自身（注释里描述密码模式会触发误报）
+    scripts/git-hooks/pre-commit) continue ;;
+  esac
+  # 跳过删除的文件
+  [ -f "$f" ] || continue
+  # grep staged 内容（用 git diff --cached）
+  if git diff --cached "$f" 2>/dev/null | grep -E '^\+.*(KEYSTORE_PASSWORD|KEY_PASSWORD)\s*=\s*[^<\s]' | grep -v '^+.*=$\|^+.*=\.\.\.' > /dev/null; then
+    echo "❌ Pre-commit: $f 含真实 KEYSTORE_PASSWORD/KEY_PASSWORD 值（已排除 docs/ 教学占位符）"
+    violations=$((violations + 1))
+  fi
+done
+
+if [ $violations -gt 0 ]; then
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "检测到 $violations 处违规。如确认要强制提交："
+  echo "  git commit --no-verify"
+  echo "（但请先确认不是误操作——密钥丢失 = 灾难）"
+  exit 1
+fi
+
+exit 0
