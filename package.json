@@ -16,7 +16,8 @@
     "build:android": "vite build --mode production && npx cap sync android",
     "build:android:test": "vite build --mode test && npx cap sync android",
     "android:bundle": "cd android && ./gradlew bundleRelease",
-    "android:apk": "cd android && ./gradlew assembleDebug"
+    "android:apk": "cd android && ./gradlew assembleDebug",
+    "android:apk:release": "cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
