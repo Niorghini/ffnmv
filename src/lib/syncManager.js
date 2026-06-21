@@ -16,6 +16,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { pickWinner } from './conflict'
+import { useSyncStore } from '@/stores/useSyncStore'
 
 const ENTITIES = ['notes', 'tags', 'note_tags']
 
@@ -428,11 +429,13 @@ export class SyncManager {
     this._onOnline = () => {
       this.retryDelay = 1000
       this.batchSize = 100
+      useSyncStore.getState().setOnline(true)
       this.fullSync()
     }
     this._onOffline = () => {
       this.batchSize = 20
       this._setState({ status: 'offline' })
+      useSyncStore.getState().setOnline(false)
     }
     this._onVisibility = () => {
       if (document.visibilityState === 'visible') this.fullSync()
