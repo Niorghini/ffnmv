@@ -17,23 +17,32 @@
 
 ## 1. 前置条件（一次性）
 
-### 1.1 JDK 17
+### 1.1 JDK 21
 
-Capacitor 8 + Android Gradle Plugin 8.x 需要 JDK 17。
+Capacitor 8 + Android Gradle Plugin 8.x 工具链要 JDK **21**（不是 17）。装 17 会报 `languageVersion=21` 错误。
 
 **macOS**（用 Homebrew）：
+
+⚠️ **不能用 `brew install --cask temurin@21`**——会要 sudo 密码，CI/无头环境跑不动。
+
+用 brew formula 装，免 sudo：
+
 ```bash
-brew install --cask temurin@17
-# 验证
-/usr/libexec/java_home -v 17
-# 应该输出类似：/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
+brew install openjdk@21
 ```
 
-**Linux**（Ubuntu/Debian）：
+JAVA_HOME 设到 brew 装的路径：
 ```bash
-sudo apt update
-sudo apt install openjdk-17-jdk
-java -version   # 应显示 17.x
+# ~/.zshrc 加：
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+source ~/.zshrc
+```
+
+**验证**：
+```bash
+java -version
+# 应输出 21.0.x
 ```
 
 ### 1.2 Android SDK
@@ -45,10 +54,8 @@ java -version   # 应显示 17.x
 brew install --cask android-commandlinetools
 
 # ⚠️ brew 把 SDK 装在 /opt/homebrew/share/android-commandlinetools/，**不是** ~/Library/Android/sdk
-# brew --prefix 对 cask 不生效，直接用硬路径（已用 find 确认）：
 export ANDROID_HOME="/opt/homebrew/share/android-commandlinetools"
 export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 
 source ~/.zshrc
 ```
@@ -75,7 +82,6 @@ rm commandlinetools-mac-*.zip
 # 2. 设环境变量
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 
 source ~/.zshrc
 ```
@@ -87,6 +93,15 @@ yes | sdkmanager --licenses
 
 # 装 platforms;android-36（Capacitor 8 默认 target SDK）+ build-tools + platform-tools（adb 在这里）
 sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+```
+
+**⚠️ 防 ANDROID_HOME 不生效（非交互 shell 场景）**：
+
+Gradle 是 non-interactive shell 启动 daemon，可能不继承你终端的 `ANDROID_HOME`。**兜底方案**：写 `android/local.properties`（gitignore 已在）：
+
+```bash
+echo "sdk.dir=/opt/homebrew/share/android-commandlinetools" > android/local.properties
+# 方式 B 改成：echo "sdk.dir=$HOME/Library/Android/sdk" > android/local.properties
 ```
 
 **Linux**：
@@ -163,12 +178,16 @@ keytool -genkey -v \
 ```bash
 mkdir -p ~/.gradle
 cat >> ~/.gradle/gradle.properties <<'EOF'
+
+# ffnmv Android release signing
 KEYSTORE_PASSWORD=<从 1Password 取>
 KEY_PASSWORD=<从 1Password 取>
 EOF
 ```
 
 > ⚠️ 不要把这个文件 commit 到 git。它在用户目录 `~/.gradle/`，不在项目里。
+>
+> build.gradle 的 `signingConfigs.release` 优先读 `System.getenv("KEYSTORE_PASSWORD")`，fallback 到 `project.findProperty("KEYSTORE_PASSWORD")`（也就是这个文件）。CI 设环境变量即可，本地写 gradle.properties 即可。
 
 ---
 
@@ -187,6 +206,14 @@ npm run android:apk:release
 ```
 
 第一次跑会下载 Gradle 8.x + Android Gradle Plugin 依赖，约 2-5 分钟（取决于网速）。之后会缓存。
+
+**⚠️ 如果报 `SDK location not found`**：写 `android/local.properties`：
+```bash
+echo "sdk.dir=/opt/homebrew/share/android-commandlinetools" > android/local.properties
+# 或方式 B：echo "sdk.dir=$HOME/Library/Android/sdk" > android/local.properties
+```
+
+**⚠️ 如果报 `languageVersion=21` 或 `Java 21` 找不到**：JDK 装错版本。回到 §1.1 重装 JDK 21（`brew install openjdk@21`）。
 
 ### 出包位置
 
@@ -279,9 +306,13 @@ echo $ANDROID_HOME
 # 应输出你的 SDK 路径
 ```
 
-### 6.3 `Could not find tools.jar`
+### 6.3 `Could not find tools.jar` / `languageVersion=21`
 
-JDK 装了 11 但 Capacitor 8 要 17。检查 `java -version`，重装 17。
+JDK 装了 17 但 Capacitor 8 plugin 要 21。检查 `java -version`，重装 21：
+```bash
+brew install openjdk@21
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+```
 
 ### 6.4 `Keystore was tampered with, or password was incorrect`
 
@@ -289,6 +320,7 @@ JDK 装了 11 但 Capacitor 8 要 17。检查 `java -version`，重装 17。
 ```bash
 cat ~/.gradle/gradle.properties
 # 确认 KEYSTORE_PASSWORD / KEY_PASSWORD 与 1Password 里的匹配
+# build.gradle 也读 System.getenv()，CI 走环境变量，本地走 gradle.properties
 ```
 
 ### 6.5 gradle build 报网络错误
