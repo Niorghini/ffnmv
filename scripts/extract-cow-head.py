@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 SRC = '/Users/niorghini/Downloads/logo-appicon-v1.png'
 OUT_DIR = '/tmp/icons'
 SIZES = [1024, 512, 256, 192, 128, 64, 48]
-MARGIN_PCT = 0.15          # 15% 边距（保证圆里牛角不被裁）
+MARGIN_PCT = 0.20          # 20% 边距（cow ~50%，够白边，不顶天立地）
 CORNER_RADIUS_PCT = 0.22   # iOS 风格圆角
 
 os.makedirs(OUT_DIR, exist_ok=True)
