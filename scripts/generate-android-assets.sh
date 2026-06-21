@@ -53,7 +53,13 @@ done
 # 4. 启动屏（drawable-*/splash.png + drawable/splash.png）
 echo ""
 echo "=== 生成启动屏 splash 各密度 ==="
+# 先删掉可能存在的"drawable-{density}"错文件（之前 sips 误把斜杠名当文件名）
+for density in "${DENSITIES[@]}"; do
+  rm -f "android/app/src/main/res/drawable-${density}" 2>/dev/null
+done
+
 # drawable 里放主版本
+mkdir -p android/app/src/main/res
 sips -z ${SPLASH_SIZES[4]} ${SPLASH_SIZES[4]} "$SPLASH_SRC" --out android/app/src/main/res/drawable/splash.png > /dev/null
 echo "  ✓ drawable/splash.png (${SPLASH_SIZES[4]}x${SPLASH_SIZES[4]})"
 
@@ -61,8 +67,9 @@ echo "  ✓ drawable/splash.png (${SPLASH_SIZES[4]}x${SPLASH_SIZES[4]})"
 for i in 0 1 2 3 4; do
   density=${DENSITIES[$i]}
   size=${SPLASH_SIZES[$i]}
-  out="android/app/src/main/res/drawable-${density}/splash.png"
-  sips -z $size $size "$SPLASH_SRC" --out "$out" > /dev/null
+  out_dir="android/app/src/main/res/drawable-${density}"
+  mkdir -p "$out_dir"
+  sips -z $size $size "$SPLASH_SRC" --out "$out_dir/splash.png" > /dev/null
   echo "  ✓ drawable-${density}/splash.png (${size}x${size})"
 done
 
