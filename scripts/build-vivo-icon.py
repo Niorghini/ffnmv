@@ -45,7 +45,7 @@ print(f"cow 原始: {cw}x{ch}")
 # 2. cow 缩放到画布的 25%（vivo 安全区约 25-30%）
 #    vivo 的 launcher icon 实际显示器范围约 72dp（out of 108dp = 66%）
 #    cow 占 72dp 的 35% = 25dp → 画布 108dp 占比 23%
-TARGET_COW_PCT = 0.25
+TARGET_COW_PCT = 0.40
 cow_target_px = int(SIZE * TARGET_COW_PCT)
 cow_resized = cow.resize((cow_target_px, cow_target_px), Image.LANCZOS)
 
