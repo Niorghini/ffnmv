@@ -17,17 +17,95 @@
 import { v4 as uuidv4 } from 'uuid'
 import { pickWinner } from './conflict'
 import { useSyncStore } from '@/stores/useSyncStore'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type {
+  Note, Tag, NoteTag,
+  EntityType, SyncQueueItem, SyncQueueStatus, SyncEngineStatus, SyncOpType, ConflictRecord,
+} from '@/types'
+import type { FfnDb } from './db'
+import type { Database } from '@/types/api/database'
 
-const ENTITIES = ['notes', 'tags', 'note_tags']
+const ENTITIES: EntityType[] = ['notes', 'tags', 'note_tags']
 
-const pkOf = (entity, row) => {
-  if (entity === 'note_tags') return [row.note_id, row.tag_id]
-  return row.id
+// 联合实体类型（cloud / local 行都可能）
+type SyncEntity = Note | Tag | NoteTag
+
+// pkOf 输入是联合类型，输出是 id 字符串或 [string, string]
+const pkOf = (entity: EntityType, row: SyncEntity): string | [string, string] => {
+  if (entity === 'note_tags') {
+    const r = row as NoteTag
+    return [r.note_id, r.tag_id]
+  }
+  return (row as Note | Tag).id
 }
 
-const nowIso = (clock) => new Date(clock()).toISOString()
+const nowIso = (clock: () => number): string => new Date(clock()).toISOString()
+
+// ─── SyncManager 公开类型 ────────────────────────────────────────────────
+export interface SyncStateChange {
+  status?: SyncEngineStatus
+  lastSyncAt?: number
+  error?: string | null
+  pending?: number
+  online?: boolean
+}
+
+export interface ConflictEvent {
+  entityType: EntityType
+  local: SyncEntity
+  cloud: SyncEntity
+  winner: SyncEntity
+  conflictId: string
+}
+
+// 实际从 supabase Realtime 收到的 payload
+interface RealtimePayload {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+  new: Record<string, unknown>
+  old: Record<string, unknown>
+}
+
+export interface SyncManagerDeps {
+  db: FfnDb
+  supabase: SupabaseClient<Database>
+  deviceId: string
+  clock?: () => number
+  onLocalChange?: ((entity: EntityType) => void) | null
+  onSyncStateChange?: ((partial: SyncStateChange) => void) | null
+  onConflict?: ((event: ConflictEvent) => void) | null
+}
 
 export class SyncManager {
+  private db: FfnDb
+  private supabase: SupabaseClient<Database>
+  private deviceId: string
+  private clock: () => number
+  // 公开回调（syncInstance.ts 直接赋值）
+  public onLocalChange: ((entity: EntityType) => void) | null
+  public onSyncStateChange: ((partial: SyncStateChange) => void) | null
+  public onConflict: ((event: ConflictEvent) => void) | null
+  private isSyncing = false
+  private realtimeChannel: ReturnType<SupabaseClient<Database>['channel']> | null = null
+  private _pollTimer: ReturnType<typeof setTimeout> | null = null
+  // 自适应轮询基线 60s,空闲 3 次后翻倍,上限 5min。Realtime 已覆盖实时场景,
+  // 这里只是兜底,所以可以激进拉长以省电/省带宽。
+  private minPollInterval = 60000
+  private maxPollInterval = 300000
+  private pollInterval = this.minPollInterval
+  private consecutiveEmpty = 0
+  private retryDelay = 1000
+  private maxRetryDelay = 32000
+  private batchSize = 100
+  private userId: string | null = null
+  private _retryTimer: ReturnType<typeof setTimeout> | null = null
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private _onOnline: (() => void) | null = null
+  private _onOffline: (() => void) | null = null
+  private _onVisibility: (() => void) | null = null
+  private _onDataUpdated: (() => void) | null = null
+  private _immediateSyncTimer: ReturnType<typeof setTimeout> | null = null
+  private _onDbReset: (() => void) | null = null
+
   constructor({
     db,
     supabase,
@@ -36,7 +114,7 @@ export class SyncManager {
     onLocalChange = null,
     onSyncStateChange = null,
     onConflict = null,
-  }) {
+  }: SyncManagerDeps) {
     this.db = db
     this.supabase = supabase
     this.deviceId = deviceId
@@ -44,29 +122,15 @@ export class SyncManager {
     this.onLocalChange = onLocalChange
     this.onSyncStateChange = onSyncStateChange
     this.onConflict = onConflict
-    this.isSyncing = false
-    this.realtimeChannel = null
-    this._pollTimer = null
-    // 自适应轮询基线 60s,空闲 3 次后翻倍,上限 5min。Realtime 已覆盖实时场景,
-    // 这里只是兜底,所以可以激进拉长以省电/省带宽。
-    this.minPollInterval = 60000
-    this.maxPollInterval = 300000
-    this.pollInterval = this.minPollInterval
-    this.consecutiveEmpty = 0
-    this.retryDelay = 1000
-    this.maxRetryDelay = 32000
-    this.batchSize = 100
-    this.userId = null
-    this._retryTimer = null
-    this._reconnectTimer = null
-    this._onOnline = null
-    this._onOffline = null
-    this._onVisibility = null
-    this._onDataUpdated = null
-    this._immediateSyncTimer = null
   }
 
-  async start() {
+  // 暴露 setter（syncInstance.ts 用来绑定 store）
+  setOnSyncStateChange(fn: ((p: SyncStateChange) => void) | null): void { this.onSyncStateChange = fn }
+  setOnConflict(fn: ((e: ConflictEvent) => void) | null): void { this.onConflict = fn }
+  setOnLocalChange(fn: ((e: EntityType) => void) | null): void { this.onLocalChange = fn }
+  // 直接赋值属性（向后兼容 syncInstance.ts 中 `sm.onSyncStateChange = ...` 的写法）
+
+  async start(): Promise<boolean> {
     const u = await this.supabase.auth.getUser()
     const user = u?.data?.user
     if (!user) return false
@@ -78,9 +142,9 @@ export class SyncManager {
     return true
   }
 
-  async stop() {
+  async stop(): Promise<void> {
     if (this.realtimeChannel) {
-      this.supabase.removeChannel(this.realtimeChannel)
+      await this.supabase.removeChannel(this.realtimeChannel)
       this.realtimeChannel = null
     }
     if (this._pollTimer) {
@@ -94,7 +158,7 @@ export class SyncManager {
   }
 
   // ─── 全量增量同步 ───────────────────────────────────────────────────
-  async fullSync() {
+  async fullSync(): Promise<boolean> {
     if (this.isSyncing) return false
     if (!this.userId) {
       const u = await this.supabase.auth.getUser()
@@ -116,7 +180,8 @@ export class SyncManager {
       this._setState({ status: 'idle', lastSyncAt: this.clock() })
       return totalPulled > 0 || totalPushed > 0
     } catch (err) {
-      this._setState({ status: 'error', error: err.message })
+      const msg = err instanceof Error ? err.message : String(err)
+      this._setState({ status: 'error', error: msg })
       this.scheduleRetry()
       return false
     } finally {
@@ -124,7 +189,7 @@ export class SyncManager {
     }
   }
 
-  async _syncEntity(entity) {
+  private async _syncEntity(entity: EntityType): Promise<{ pulled: number; pushed: number }> {
     const lastKey = `last_${entity}_sync_at`
     const meta = await this.db.sync_metadata.get(lastKey)
     const lastSyncAt = meta?.value || '1970-01-01T00:00:00.000Z'
@@ -139,34 +204,34 @@ export class SyncManager {
     if (error) throw error
 
     if (cloudRows && cloudRows.length > 0) {
-      const localRows = []
+      const localRows: SyncEntity[] = []
       const ts = nowIso(this.clock)
       await this.db.transaction('rw', this.db[entity], async () => {
-        for (const cloudRow of cloudRows) {
-          const localRow = stripUserId(cloudRow)
+        for (const cloudRowRaw of cloudRows as Record<string, unknown>[]) {
+          const localRow = stripUserId(cloudRowRaw) as unknown as SyncEntity
           localRows.push(localRow)
           const pk = pkOf(entity, localRow)
-          const existing = await this.db[entity].get(pk)
+          const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
           if (!existing) {
             await this.db[entity].put({
-              ...localRow,
+              ...(localRow as unknown as Record<string, unknown>),
               sync_status: 'synced',
               last_synced_at: ts,
-            })
+            } as never)
           } else if (localRow.version > existing.version) {
             await this.db[entity].put({
-              ...localRow,
+              ...(localRow as unknown as Record<string, unknown>),
               sync_status: 'synced',
               last_synced_at: ts,
-            })
+            } as never)
           } else if (localRow.version === existing.version && existing.sync_status === 'pending') {
-            await this._handleConflict(entity, existing, cloudRow)
+            await this._handleConflict(entity, existing, localRow)
           }
           // 同 version 已同步：跳过；本地 version 更高：本地胜，留待推送
         }
       })
       const maxUpdatedAt = cloudRows
-        .map((r) => r.updated_at)
+        .map((r) => (r as { updated_at: string }).updated_at)
         .reduce((m, t) => (t > m ? t : m), lastSyncAt)
       await this.db.sync_metadata.put({ key: lastKey, value: maxUpdatedAt })
       if (typeof window !== 'undefined') {
@@ -194,7 +259,7 @@ export class SyncManager {
    * - 跳过软删 notes（deleted_at != null 是 trash 里的，不是硬删）
    * - 网络错 → warn 不阻塞 sync 其他步骤
    */
-  async _cleanupRemoteHardDeletions(entity) {
+  private async _cleanupRemoteHardDeletions(entity: EntityType): Promise<void> {
     if (!['notes', 'tags', 'note_tags'].includes(entity)) return
     // note_tags 没 id 列（复合主键 note_id+tag_id），用 note_id 当唯一键
     const idCol = entity === 'note_tags' ? 'note_id' : 'id'
@@ -203,22 +268,25 @@ export class SyncManager {
         .from(entity)
         .select(idCol)
       if (error) throw error
-      const cloudIds = new Set((cloudList || []).map((r) => r[idCol]))
+      const cloudIds = new Set(((cloudList || []) as Record<string, unknown>[]).map((r) => r[idCol] as string))
 
-      const localRows = await this.db[entity].toArray()
-      const removedIds = []
+      const localRows = (await this.db[entity].toArray()) as SyncEntity[]
+      const removedIds: string[] = []
       for (const local of localRows) {
-        if (cloudIds.has(local[idCol])) continue
+        const id = (local as unknown as Record<string, unknown>)[idCol]
+        if (cloudIds.has(id as string)) continue
         // pending/failed：让 push 处理，删了会丢本地未同步改动
         if (local.sync_status === 'pending' || local.sync_status === 'failed') continue
         // 真硬删：物理删本地（notes 的 trash 副本也一并清——A 端已硬删，trash 留着没意义）
-        let pkStr
+        let pkStr: string
         if (entity === 'note_tags') {
-          await this.db.note_tags.delete([local.note_id, local.tag_id])
-          pkStr = `${local.note_id}:${local.tag_id}`
+          const l = local as NoteTag
+          await this.db.note_tags.delete([l.note_id, l.tag_id])
+          pkStr = `${l.note_id}:${l.tag_id}`
         } else {
-          await this.db[entity].delete(local.id)
-          pkStr = local.id
+          const l = local as Note | Tag
+          await this.db[entity].delete(l.id)
+          pkStr = l.id
         }
         removedIds.push(pkStr)
       }
@@ -230,24 +298,25 @@ export class SyncManager {
         }
       }
     } catch (e) {
-      console.warn(`[sync] remote-delete cleanup for ${entity} failed:`, e?.message || e)
+      const msg = e instanceof Error ? e.message : String(e)
+      console.warn(`[sync] remote-delete cleanup for ${entity} failed:`, msg)
     }
   }
 
   // ─── 推送本地变更 ───────────────────────────────────────────────────
-  async _pushLocalChanges(entity) {
+  private async _pushLocalChanges(entity: EntityType): Promise<number> {
     const table = this.db[entity]
-    const pending = await table
-      .filter((row) => row.sync_status === 'pending' || row.sync_status === 'failed')
+    const pending = (await table
+      .filter((row: SyncEntity) => row.sync_status === 'pending' || row.sync_status === 'failed')
       .limit(this.batchSize)
-      .toArray()
+      .toArray()) as SyncEntity[]
 
     if (pending.length === 0) return 0
 
     const items = pending.map((row) => ({
-      ...row,
+      ...(row as unknown as Record<string, unknown>),
       user_id: this.userId,
-      last_sync_device: row.last_sync_device || this.deviceId,
+      last_sync_device: (row as { last_sync_device?: string }).last_sync_device || this.deviceId,
       // 兜底:note_tags 老数据可能没 updated_at,撞云端 NOT NULL 约束。
       // 这里兜底补上,新数据由 repo 层正确写入。
       updated_at: row.updated_at || nowIso(this.clock),
@@ -256,7 +325,7 @@ export class SyncManager {
     const onConflict = entity === 'note_tags' ? 'note_id,tag_id' : 'id'
     const { error } = await this.supabase
       .from(entity)
-      .upsert(items, { onConflict })
+      .upsert(items as never[], { onConflict })
 
     if (error) throw error
 
@@ -264,9 +333,13 @@ export class SyncManager {
     await this.db.transaction('rw', table, async () => {
       for (const row of pending) {
         const pk = pkOf(entity, row)
-        const existing = await table.get(pk)
+        const existing = (await table.get(pk as never)) as SyncEntity | undefined
         if (existing) {
-          await table.put({ ...existing, sync_status: 'synced', last_synced_at: ts })
+          await table.put({
+            ...(existing as unknown as Record<string, unknown>),
+            sync_status: 'synced',
+            last_synced_at: ts,
+          } as never)
         }
       }
     })
@@ -275,59 +348,59 @@ export class SyncManager {
     const queueItems = await this.db.sync_queue
       .where('entity_type')
       .equals(entity)
-      .and((q) => q.status === 'pending')
+      .and((q: SyncQueueItem) => q.status === 'pending')
       .toArray()
     for (const q of queueItems) {
-      await this.db.sync_queue.update(q.id, { status: 'done' })
+      if (q.id != null) await this.db.sync_queue.update(q.id, { status: 'done' satisfies SyncQueueStatus })
     }
     return pending.length
   }
 
   // ─── 冲突处理 ───────────────────────────────────────────────────────
-  async _handleConflict(entity, local, cloud) {
-    const winner = pickWinner(local, cloud)
+  private async _handleConflict(entity: EntityType, local: SyncEntity, cloud: SyncEntity): Promise<void> {
+    const winner = pickWinner<SyncEntity>(local, cloud)
     const conflictId = uuidv4()
     const pk = pkOf(entity, local)
-    await this.db.conflicts.add({
-      id: conflictId,
-      entity_type: entity,
-      entity_id: typeof pk === 'object' ? `${pk[0]}:${pk[1]}` : pk,
-      local_data: local,
-      cloud_data: cloud,
-      created_at: nowIso(this.clock),
-    })
+    const localData = local as unknown as Record<string, unknown>
+    const cloudData = cloud as unknown as Record<string, unknown>
+    const record: ConflictRecord = entity === 'notes'
+      ? { id: conflictId, entity_type: 'notes', entity_id: typeof pk === 'object' ? `${pk[0]}:${pk[1]}` : pk, local_data: localData as unknown as Note, cloud_data: cloudData as unknown as Note, created_at: nowIso(this.clock) }
+      : entity === 'tags'
+        ? { id: conflictId, entity_type: 'tags', entity_id: typeof pk === 'object' ? `${pk[0]}:${pk[1]}` : pk, local_data: localData as unknown as Tag, cloud_data: cloudData as unknown as Tag, created_at: nowIso(this.clock) }
+        : { id: conflictId, entity_type: 'note_tags', entity_id: typeof pk === 'object' ? `${pk[0]}:${pk[1]}` : pk, local_data: localData as unknown as NoteTag, cloud_data: cloudData as unknown as NoteTag, created_at: nowIso(this.clock) }
+    await this.db.conflicts.add(record)
     this.onConflict?.({ entityType: entity, local, cloud, winner, conflictId })
     if (winner === cloud) {
-      const localCloud = stripUserId(cloud)
+      const localCloud = stripUserId(cloud as unknown as Record<string, unknown>) as unknown as SyncEntity
       await this.db[entity].put({
-        ...localCloud,
+        ...(localCloud as unknown as Record<string, unknown>),
         sync_status: 'synced',
         last_synced_at: nowIso(this.clock),
-      })
+      } as never)
     }
   }
 
   // ─── Realtime ───────────────────────────────────────────────────────
-  setupRealtime() {
+  private setupRealtime(): void {
     if (this.realtimeChannel) return
     const ch = this.supabase
       .channel('ffn-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notes', filter: `user_id=eq.${this.userId}` },
-        (p) => this._handleRealtimeChange('notes', p),
+        (p: RealtimePayload) => this._handleRealtimeChange('notes', p),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tags', filter: `user_id=eq.${this.userId}` },
-        (p) => this._handleRealtimeChange('tags', p),
+        (p: RealtimePayload) => this._handleRealtimeChange('tags', p),
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'note_tags', filter: `user_id=eq.${this.userId}` },
-        (p) => this._handleRealtimeChange('note_tags', p),
+        (p: RealtimePayload) => this._handleRealtimeChange('note_tags', p),
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           this.scheduleRealtimeReconnect()
         }
@@ -335,32 +408,40 @@ export class SyncManager {
     this.realtimeChannel = ch
   }
 
-  async _handleRealtimeChange(entity, payload) {
+  private async _handleRealtimeChange(entity: EntityType, payload: RealtimePayload): Promise<void> {
     const { eventType, new: newRow, old: oldRow } = payload
     if (newRow?.last_sync_device === this.deviceId) return
 
     const ts = nowIso(this.clock)
-    let dispatchDetail = { entityType: entity, source: 'realtime' }
+    let dispatchDetail: Record<string, unknown> = { entityType: entity, source: 'realtime' }
     await this.db.transaction('rw', this.db[entity], async () => {
       if (eventType === 'DELETE') {
-        const pk = pkOf(entity, oldRow)
-        const existing = await this.db[entity].get(pk)
+        const pk = pkOf(entity, oldRow as unknown as SyncEntity)
+        const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
         if (existing && existing.sync_status === 'pending') return
-        await this.db[entity].delete(pk)
+        await this.db[entity].delete(pk as never)
         const pkStr = Array.isArray(pk) ? pk.join(':') : pk
         dispatchDetail = { ...dispatchDetail, removed: [pkStr] }
       } else {
-        const localRow = stripUserId(newRow)
+        const localRow = stripUserId(newRow) as unknown as SyncEntity
         const pk = pkOf(entity, localRow)
-        const existing = await this.db[entity].get(pk)
+        const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
         if (!existing) {
-          await this.db[entity].put({ ...localRow, sync_status: 'synced', last_synced_at: ts })
+          await this.db[entity].put({
+            ...(localRow as unknown as Record<string, unknown>),
+            sync_status: 'synced',
+            last_synced_at: ts,
+          } as never)
           dispatchDetail = { ...dispatchDetail, rows: [localRow] }
         } else if (localRow.version > existing.version) {
           if (existing.sync_status === 'pending') {
-            await this._handleConflict(entity, existing, newRow)
+            await this._handleConflict(entity, existing, localRow)
           } else {
-            await this.db[entity].put({ ...localRow, sync_status: 'synced', last_synced_at: ts })
+            await this.db[entity].put({
+              ...(localRow as unknown as Record<string, unknown>),
+              sync_status: 'synced',
+              last_synced_at: ts,
+            } as never)
             dispatchDetail = { ...dispatchDetail, rows: [localRow] }
           }
         }
@@ -374,7 +455,7 @@ export class SyncManager {
     }
   }
 
-  scheduleRealtimeReconnect() {
+  private scheduleRealtimeReconnect(): void {
     if (this._reconnectTimer) clearTimeout(this._reconnectTimer)
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null
@@ -384,14 +465,14 @@ export class SyncManager {
   }
 
   // ─── 轮询 + 监听 ───────────────────────────────────────────────────
-  startPolling() {
+  private startPolling(): void {
     if (this._pollTimer) return
     this._schedulePoll()
   }
 
   // 自适应轮询:基线 60s,连续 3 次空 sync(无拉无推)翻倍间隔,上限 5min。
   // 任何本地写入会触发 1s debounced 立即同步,如果有变更就把间隔重置回基线。
-  _schedulePoll() {
+  private _schedulePoll(): void {
     this._pollTimer = setTimeout(async () => {
       this._pollTimer = null
       // 跳过条件:正在 sync / 离线 / tab 在后台——但仍要 reschedule 别丢失
@@ -412,7 +493,7 @@ export class SyncManager {
     }, this.pollInterval)
   }
 
-  _adaptPollInterval(hadChanges) {
+  private _adaptPollInterval(hadChanges: boolean): void {
     if (hadChanges) {
       this.consecutiveEmpty = 0
       this.pollInterval = this.minPollInterval
@@ -424,7 +505,7 @@ export class SyncManager {
     }
   }
 
-  setupListeners() {
+  private setupListeners(): void {
     if (typeof window === 'undefined') return
     this._onOnline = () => {
       this.retryDelay = 1000
@@ -461,7 +542,7 @@ export class SyncManager {
     window.addEventListener('db-reset', this._onDbReset)
   }
 
-  removeListeners() {
+  private removeListeners(): void {
     if (typeof window === 'undefined') return
     if (this._onOnline) window.removeEventListener('online', this._onOnline)
     if (this._onOffline) window.removeEventListener('offline', this._onOffline)
@@ -470,7 +551,7 @@ export class SyncManager {
     if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility)
   }
 
-  scheduleRetry() {
+  private scheduleRetry(): void {
     if (this._retryTimer) clearTimeout(this._retryTimer)
     this._retryTimer = setTimeout(() => {
       this._retryTimer = null
@@ -479,14 +560,17 @@ export class SyncManager {
     this.retryDelay = Math.min(this.retryDelay * 2, this.maxRetryDelay)
   }
 
-  _setState(partial) {
+  private _setState(partial: SyncStateChange): void {
     this.onSyncStateChange?.(partial)
   }
 }
 
-const stripUserId = (row) => {
+const stripUserId = (row: Record<string, unknown>): Record<string, unknown> => {
   const { user_id, ...rest } = row
   return rest
 }
 
-export const createSyncManager = (deps) => new SyncManager(deps)
+// 抑制 unused 警告：SyncOpType 在 SyncQueueItem 中使用，本文件其他位置未直接引用
+type _UnusedSyncOpType = SyncOpType
+
+export const createSyncManager = (deps: SyncManagerDeps): SyncManager => new SyncManager(deps)

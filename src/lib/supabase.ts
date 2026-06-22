@@ -12,6 +12,7 @@ import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
 import { storage } from './storage'
 import { secureStorageAdapter } from './secureStorageAdapter'
+import type { Database } from '@/types/api/database'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -23,7 +24,7 @@ if (!url || !anonKey) {
 
 const isNative = Capacitor.isNativePlatform()
 
-export const supabase = createClient(url || 'http://localhost', anonKey || 'placeholder', {
+export const supabase = createClient<Database>(url || 'http://localhost', anonKey || 'placeholder', {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -37,7 +38,7 @@ export const supabase = createClient(url || 'http://localhost', anonKey || 'plac
   },
 })
 
-export const isSupabaseConfigured = () => Boolean(url && anonKey)
+export const isSupabaseConfigured = (): boolean => Boolean(url && anonKey)
 
 if (isNative) {
   // 切网（WiFi↔4G）后自动重连 Realtime

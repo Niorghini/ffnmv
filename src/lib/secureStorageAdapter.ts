@@ -4,10 +4,11 @@
  * - Android 端落到 Keystore（系统级加密，root 设备可绕但不泄到文件系统）
  * - get 失败返回 null（与 supabase-js 期望一致）
  */
+import type { SupabaseStorageAdapter } from './storage'
 import { SecureStoragePlugin } from 'capacitor-secure-storage-plugin'
 
-export const secureStorageAdapter = {
-  getItem: async (key) => {
+export const secureStorageAdapter: SupabaseStorageAdapter = {
+  getItem: async (key: string): Promise<string | null> => {
     try {
       const { value } = await SecureStoragePlugin.get({ key })
       return value ?? null
@@ -15,10 +16,10 @@ export const secureStorageAdapter = {
       return null
     }
   },
-  setItem: async (key, value) => {
+  setItem: async (key: string, value: string): Promise<void> => {
     await SecureStoragePlugin.set({ key, value })
   },
-  removeItem: async (key) => {
+  removeItem: async (key: string): Promise<void> => {
     try {
       await SecureStoragePlugin.remove({ key })
     } catch {

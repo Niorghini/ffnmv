@@ -8,18 +8,21 @@ import { emitDataUpdated } from '@/lib/tags'
 
 const RETAIN_DAYS = 30
 
-export const runCleanup = async ({ now = Date.now() } = {}) => {
+export interface CleanupStats {
+  notes: number
+  tags: number
+  note_tags: number
+  conflicts: number
+}
+
+export const runCleanup = async ({ now = Date.now() }: { now?: number } = {}): Promise<CleanupStats> => {
   const cutoff = new Date(now - RETAIN_DAYS * 86400000).toISOString()
   const ts = nowIso()
-  const stats = { notes: 0, tags: 0, note_tags: 0, conflicts: 0 }
+  const stats: CleanupStats = { notes: 0, tags: 0, note_tags: 0, conflicts: 0 }
 
   await db.transaction(
     'rw',
-    db.notes,
-    db.tags,
-    db.note_tags,
-    db.conflicts,
-    db.sync_queue,
+    [db.notes, db.tags, db.note_tags, db.conflicts, db.sync_queue],
     async () => {
       // notes
       const oldNotes = await db.notes

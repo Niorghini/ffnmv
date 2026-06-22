@@ -10,23 +10,27 @@ import { db } from './db'
 import { supabase } from './supabase'
 import { stopSync } from './syncInstance'
 import { stopArchiveScheduler } from './autoArchive'
+import type { EntityType } from '@/types'
 
-const CLOUD_TABLES = ['notes', 'tags', 'note_tags']
+const CLOUD_TABLES: EntityType[] = ['notes', 'tags', 'note_tags']
+
+export interface CloudResetResult {
+  skipped: boolean
+  reason?: string
+  notes?: number
+  tags?: number
+  note_tags?: number
+}
 
 /**
  * 清空所有 Dexie 存储（保留 auth 状态）
  */
-export const localReset = async () => {
+export const localReset = async (): Promise<number> => {
   const stores = db.tables.map((t) => t.name)
+  // 7 张表超过 transaction 重载（最多 5 张表），用数组形式
   await db.transaction(
     'rw',
-    db.notes,
-    db.tags,
-    db.note_tags,
-    db.sync_queue,
-    db.sync_metadata,
-    db.conflicts,
-    db.cache,
+    [db.notes, db.tags, db.note_tags, db.sync_queue, db.sync_metadata, db.conflicts, db.cache],
     async () => {
       for (const name of stores) {
         await db.table(name).clear()
@@ -42,12 +46,12 @@ export const localReset = async () => {
  * - RLS 自动 scope 到当前 user 的行
  * - 如果用户未登录（offline 状态），跳过
  */
-export const cloudReset = async () => {
+export const cloudReset = async (): Promise<CloudResetResult> => {
   const { data: userData } = await supabase.auth.getUser()
   if (!userData?.user) {
     return { skipped: true, reason: 'not signed in' }
   }
-  const stats = { notes: 0, tags: 0, note_tags: 0 }
+  const stats: { [k in EntityType]?: number } = {}
   for (const tableName of CLOUD_TABLES) {
     const { error, count } = await supabase
       .from(tableName)
@@ -58,7 +62,12 @@ export const cloudReset = async () => {
     }
     stats[tableName] = count ?? 0
   }
-  return { skipped: false, ...stats }
+  return { skipped: false, ...(stats as { notes: number; tags: number; note_tags: number }) }
+}
+
+export interface FullResetResult {
+  localStores: number
+  cloud: CloudResetResult
 }
 
 /**
@@ -66,7 +75,7 @@ export const cloudReset = async () => {
  * - 必须在 sync 未运行时调用，避免重置期间 sync 写入新数据
  * - UI 上：调用前最好 reload 一次（确保没有正在进行的写）
  */
-export const fullReset = async () => {
+export const fullReset = async (): Promise<FullResetResult> => {
   // 1. 停所有后台任务
   await stopSync().catch(() => {})
   stopArchiveScheduler()

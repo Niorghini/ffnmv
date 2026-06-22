@@ -35,10 +35,10 @@ export interface SyncQueueItem {
   created_at: string
 }
 
-/** sync_metadata 行（key-value 字符串） */
+/** sync_metadata 行（key-value，value 可为字符串或数字，autoArchive 存 number） */
 export interface SyncMetadata {
   key: string
-  value: string
+  value: string | number
 }
 
 /** useSyncStore.status 取值（与 src/lib/syncManager.js 的状态机一致） */

@@ -3,17 +3,18 @@
  * - 在 auth 成功后 start()
  * - 在 logout / unmount 时 stop()
  */
-import { createSyncManager } from './syncManager'
+import { createSyncManager, type SyncManager } from './syncManager'
 import { supabase } from './supabase'
-import { db } from './db'
+import { db, type FfnDb } from './db'
 import { getDeviceId } from './device'
 import { useSyncStore } from '@/stores/useSyncStore'
 import { useConflictsStore } from '@/stores/useConflictsStore'
 
-let instance = null
+let instance: SyncManager | null = null
 let started = false
 
-const bindStoreUpdates = (sm) => {
+const bindStoreUpdates = (sm: SyncManager): void => {
+  // 直接赋值公开属性（SyncManager.onSyncStateChange / onConflict 已是 public）
   sm.onSyncStateChange = (partial) => {
     useSyncStore.getState().setPartial(partial)
     if (partial.lastSyncAt) {
@@ -25,10 +26,10 @@ const bindStoreUpdates = (sm) => {
   }
 }
 
-export const getSyncManager = () => {
+export const getSyncManager = (): SyncManager => {
   if (instance) return instance
   instance = createSyncManager({
-    db,
+    db: db as FfnDb,
     supabase,
     deviceId: getDeviceId(),
   })
@@ -36,7 +37,7 @@ export const getSyncManager = () => {
   return instance
 }
 
-export const startSync = async () => {
+export const startSync = async (): Promise<boolean> => {
   if (started) return true
   const sm = getSyncManager()
   const ok = await sm.start()
@@ -49,21 +50,21 @@ export const startSync = async () => {
   return ok
 }
 
-export const stopSync = async () => {
+export const stopSync = async (): Promise<void> => {
   if (!started) return
   const sm = getSyncManager()
   await sm.stop()
   started = false
 }
 
-export const isSyncStarted = () => started
+export const isSyncStarted = (): boolean => started
 
 /**
  * 清 syncManager 单例（登出后调用，确保下次 startSync 重新创建）
  * - 不主动 stop（已 stop 的话是 no-op）
  * - 重置 instance 和 started 标志
  */
-export const resetSyncInstance = () => {
+export const resetSyncInstance = (): void => {
   instance = null
   started = false
 }

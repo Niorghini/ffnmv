@@ -5,7 +5,8 @@
  * - v0.7.0 兼容：升级时自动删除旧的 'memos' store（用户确认丢弃旧数据）
  */
 
-import Dexie from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
+import type { Note, Tag, NoteTag, SyncQueueItem, SyncMetadata, ConflictRecord, CacheEntry } from '@/types'
 
 const DB_NAME = 'ffn_db'
 const DB_VERSION = 5
@@ -13,7 +14,30 @@ const DB_VERSION = 5
 // v3 → v4: ...
 // v0.7.0 → v1.2: 旧 'memos' store 升级时显式删除
 
-export const db = new Dexie(DB_NAME)
+/**
+ * Dexie upgrade transaction 的运行时扩展
+ * - Dexie 4.x 类型未声明 oldVersion / raw idbdb，但运行时存在
+ * - 原 JS 代码访问这些字段是为了删除旧版本遗留的 'memos' object store
+ * - TS 迁移保留该行为（cast 后调用，原 try/catch 兜底）
+ */
+interface DexieUpgradeTx {
+  oldVersion: number
+  db: { objectStoreNames?: { contains(n: string): boolean }; deleteObjectStore(n: string): void }
+}
+
+export type FfnDb = Dexie & {
+  notes: EntityTable<Note, 'id'>
+  tags: EntityTable<Tag, 'id'>
+  // note_tags 是复合主键 [note_id+tag_id]，EntityTable 第二参数要求 keyof T，
+  // 改用 Table<NoteTag, [string, string]> 兼容复合键类型
+  note_tags: Table<NoteTag, [string, string]>
+  sync_queue: EntityTable<SyncQueueItem, 'id'>
+  sync_metadata: EntityTable<SyncMetadata, 'key'>
+  conflicts: EntityTable<ConflictRecord, 'id'>
+  cache: EntityTable<CacheEntry, 'key'>
+}
+
+export const db = new Dexie(DB_NAME) as FfnDb
 
 db.version(DB_VERSION)
   .stores({
@@ -26,21 +50,23 @@ db.version(DB_VERSION)
     cache: 'key, expires_at',
   })
   .upgrade(async (tx) => {
+    const rawTx = tx as unknown as DexieUpgradeTx
     // v0.7.0 → v1.2:旧 'memos' store 不在 schema 中,升级时显式删除
     // 2026-06-20 防御:某些浏览器/Dexie 边界下 tx.db.objectStoreNames 是 undefined,
     // 包 try/catch + 限定 oldVersion<2 才需要清(只有 v0.7.0 v1 才有 memos)
-    if (tx.oldVersion < 2) {
+    if (rawTx.oldVersion < 2) {
       try {
-        if (tx.db?.objectStoreNames?.contains('memos')) {
-          tx.db.deleteObjectStore('memos')
+        if (rawTx.db?.objectStoreNames?.contains('memos')) {
+          rawTx.db.deleteObjectStore('memos')
         }
       } catch (e) {
-        console.warn('[db] legacy memos cleanup skipped:', e?.message || e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn('[db] legacy memos cleanup skipped:', msg)
       }
     }
     // v4 → v5: 规范化 archived_at 字段(undefined → null),保证新索引覆盖全表
-    if (tx.oldVersion < 5) {
-      await tx.table('notes').toCollection().modify((n) => {
+    if (rawTx.oldVersion < 5) {
+      await tx.table('notes').toCollection().modify((n: Note) => {
         if (n.archived_at === undefined) n.archived_at = null
       })
     }
@@ -52,14 +78,14 @@ const LEGACY_FLAG_KEY = 'ffn_v07_legacy_cleaned'
 const LEGACY_CHECKED_KEY = 'ffn_v07_legacy_checked'
 
 const safeStorage = {
-  getItem(k) {
+  getItem(k: string): string | null {
     try {
       return typeof localStorage !== 'undefined' ? localStorage.getItem(k) : null
     } catch {
       return null
     }
   },
-  setItem(k, v) {
+  setItem(k: string, v: string): void {
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem(k, v)
     } catch {
@@ -68,25 +94,25 @@ const safeStorage = {
   },
 }
 
-export const wasLegacyCleaned = () => safeStorage.getItem(LEGACY_FLAG_KEY) === '1'
-export const markLegacyCleaned = () => safeStorage.setItem(LEGACY_FLAG_KEY, '1')
+export const wasLegacyCleaned = (): boolean => safeStorage.getItem(LEGACY_FLAG_KEY) === '1'
+export const markLegacyCleaned = (): void => safeStorage.setItem(LEGACY_FLAG_KEY, '1')
 // 用单独的"已检查"标志,不影响 wasLegacyCleaned 的语义(那标志控制 toast)
-const wasLegacyChecked = () => safeStorage.getItem(LEGACY_CHECKED_KEY) === '1'
-const markLegacyChecked = () => safeStorage.setItem(LEGACY_CHECKED_KEY, '1')
+const wasLegacyChecked = (): boolean => safeStorage.getItem(LEGACY_CHECKED_KEY) === '1'
+const markLegacyChecked = (): void => safeStorage.setItem(LEGACY_CHECKED_KEY, '1')
 
 // 启动时清旧 DB（如果存在但没被 upgrade 命中——防御性）
 // 仅在初次打开后才会运行 upgrade；如果浏览器残留了 v0.7.0 的 ffn_db
 // 但用户没打开过新 App,这条检测不触发。upgrade 才是真正的清理点。
-export const detectAndPurgeLegacy = async () => {
+export const detectAndPurgeLegacy = async (): Promise<boolean> => {
   if (!indexedDB.databases) return false
   const dbs = await indexedDB.databases()
   const legacy = dbs.find((d) => d.name === DB_NAME && d.version === 1)
   if (!legacy) return false
   // 强制删除后由新版 Dexie 重建
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const req = indexedDB.deleteDatabase(DB_NAME)
-    req.onsuccess = resolve
-    req.onerror = reject
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
     req.onblocked = () => reject(new Error('旧版数据库被其他标签页占用，请关闭其他标签后刷新'))
   })
   markLegacyCleaned()
@@ -99,7 +125,7 @@ export const detectAndPurgeLegacy = async () => {
  * - 重试 2 次
  * - 都失败就抛出（App.jsx 的 catch 会处理 UI）
  */
-const deleteDb = () =>
+const deleteDb = (): Promise<void> =>
   new Promise((resolve) => {
     try {
       if (db.isOpen()) db.close()
@@ -112,9 +138,9 @@ const deleteDb = () =>
     req.onblocked = () => resolve() // 同上
   })
 
-const makeFreshDb = () => {
+const makeFreshDb = (): FfnDb => {
   // 新 Dexie 实例，避开旧实例的 internal state 污染
-  const fresh = new Dexie(DB_NAME)
+  const fresh = new Dexie(DB_NAME) as FfnDb
   fresh.version(DB_VERSION).stores({
     notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at',
     tags: 'id, name, sync_status, deleted_at',
@@ -124,17 +150,19 @@ const makeFreshDb = () => {
     conflicts: 'id, entity_type, entity_id, created_at',
     cache: 'key, expires_at',
   }).upgrade(async (tx) => {
-    if (tx.oldVersion < 2) {
+    const rawTx = tx as unknown as DexieUpgradeTx
+    if (rawTx.oldVersion < 2) {
       try {
-        if (tx.db?.objectStoreNames?.contains('memos')) {
-          tx.db.deleteObjectStore('memos')
+        if (rawTx.db?.objectStoreNames?.contains('memos')) {
+          rawTx.db.deleteObjectStore('memos')
         }
       } catch (e) {
-        console.warn('[db] legacy memos cleanup skipped:', e?.message || e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn('[db] legacy memos cleanup skipped:', msg)
       }
     }
-    if (tx.oldVersion < 5) {
-      await tx.table('notes').toCollection().modify((n) => {
+    if (rawTx.oldVersion < 5) {
+      await tx.table('notes').toCollection().modify((n: Note) => {
         if (n.archived_at === undefined) n.archived_at = null
       })
     }
@@ -142,7 +170,7 @@ const makeFreshDb = () => {
   return fresh
 }
 
-export const openDb = async () => {
+export const openDb = async (): Promise<FfnDb> => {
   // 性能：只在第一次启动时跑 indexedDB.databases() 扫描(50~200ms 视浏览器)。
   // 后续启动直接 db.open(),不再做冗余扫描。
   if (!wasLegacyChecked()) {
@@ -160,11 +188,11 @@ export const openDb = async () => {
     // 不要清空用户数据 —— 让上层(App.jsx catch)处理 UI 提示。
     // 旧逻辑是任何失败都 deleteDatabase(),这就是"打开页面没数据"的根因:
     // 偶发失败 → DB 被清 → 同步还没拉回来 → UI 空。
-    const msg = err?.message || ''
+    const msg = err instanceof Error ? err.message : ''
     const isVersionConflict =
-      err?.name === 'VersionError' ||
-      err?.inner?.name === 'VersionError' ||
-      err?.name === 'OpenFailedError' && /version/i.test(msg) ||
+      err instanceof Error && err.name === 'VersionError' ||
+      (err as { inner?: { name?: string } })?.inner?.name === 'VersionError' ||
+      err instanceof Error && err.name === 'OpenFailedError' && /version/i.test(msg) ||
       /version/i.test(msg) && /(less than|greater than|requested|existing)/i.test(msg)
     if (!isVersionConflict) {
       throw err
@@ -186,7 +214,8 @@ export const openDb = async () => {
       }
       return db
     } catch (err) {
-      console.warn(`[db] self-heal attempt ${attempt} failed:`, err?.message)
+      const m = err instanceof Error ? err.message : String(err)
+      console.warn(`[db] self-heal attempt ${attempt} failed:`, m)
       await deleteDb()
     }
   }
@@ -194,4 +223,7 @@ export const openDb = async () => {
 }
 
 // 辅助：当前时间 ISO 字符串
-export const nowIso = () => new Date().toISOString()
+export const nowIso = (): string => new Date().toISOString()
+
+// Re-export Table for consumers that need raw table access in transactions
+export type { Table }

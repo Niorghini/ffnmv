@@ -7,19 +7,20 @@
  */
 import { db, nowIso } from '@/lib/db'
 import { emitDataUpdated } from '@/lib/tags'
+import type { Note } from '@/types'
 
 const KEY = 'archive_after_days'
 const DEFAULT = 30
 const VALID = new Set([7, 30, -1])
 
-export const getArchiveAfterDays = async () => {
+export const getArchiveAfterDays = async (): Promise<number> => {
   const row = await db.sync_metadata.get(KEY)
   if (!row) return DEFAULT
   const v = Number(row.value)
   return VALID.has(v) ? v : DEFAULT
 }
 
-export const setArchiveAfterDays = async (v) => {
+export const setArchiveAfterDays = async (v: number): Promise<void> => {
   if (!VALID.has(v)) throw new Error(`Invalid archive_after_days: ${v}`)
   await db.sync_metadata.put({ key: KEY, value: v })
 }
@@ -32,7 +33,7 @@ export const setArchiveAfterDays = async (v) => {
  *   简单起见：如果 archived_at < now - N*86400000，保持归档；
  *             否则不动（避免误操作）
  */
-export const runArchive = async ({ now = Date.now() } = {}) => {
+export const runArchive = async ({ now = Date.now() }: { now?: number } = {}): Promise<number> => {
   const days = await getArchiveAfterDays()
   if (days === -1) return 0
   const cutoff = new Date(now - days * 86400000).toISOString()
@@ -41,7 +42,7 @@ export const runArchive = async ({ now = Date.now() } = {}) => {
   await db.transaction('rw', db.notes, db.sync_queue, async () => {
     const candidates = await db.notes
       .where('status').equals('completed')
-      .and((n) => !n.deleted_at && !n.archived_at && n.updated_at < cutoff)
+      .and((n: Note) => !n.deleted_at && !n.archived_at && n.updated_at < cutoff)
       .toArray()
     for (const n of candidates) {
       await db.notes.put({
@@ -66,23 +67,23 @@ export const runArchive = async ({ now = Date.now() } = {}) => {
   return count
 }
 
-let timer = null
-export const startArchiveScheduler = () => {
+let timer: ReturnType<typeof setTimeout> | null = null
+export const startArchiveScheduler = (): void => {
   if (timer) return
   // 立即跑一次
-  runArchive().catch((e) => console.warn('archive initial run failed', e))
+  runArchive().catch((e: unknown) => console.warn('archive initial run failed', e))
   // 计算到下一个 0 点的 ms
   const now = new Date()
   const next = new Date(now)
   next.setHours(24, 0, 0, 0)
-  const ms = next - now
+  const ms = next.getTime() - now.getTime()
   timer = setTimeout(function tick() {
-    runArchive().catch((e) => console.warn('archive tick failed', e))
+    runArchive().catch((e: unknown) => console.warn('archive tick failed', e))
     timer = setTimeout(tick, 86400000)
   }, ms)
 }
 
-export const stopArchiveScheduler = () => {
+export const stopArchiveScheduler = (): void => {
   if (timer) {
     clearTimeout(timer)
     timer = null
