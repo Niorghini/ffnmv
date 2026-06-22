@@ -4,10 +4,26 @@
  * （同步/账号入口已迁至顶部 UserMenu）
  */
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Hash, Tag, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Hash, Tag as TagIcon, Search, X, ListFilter, Circle, CheckCircle2, Rows3 } from 'lucide-react'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { useNotesStore } from '@/stores/useNotesStore'
+import type { Tag } from '@/types'
+
+interface StatusPillProps {
+  icon: ReactNode
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}
+
+interface TagRowProps {
+  tag: Tag
+  count: number
+  active: boolean
+  onClick: () => void
+}
 
 const Sidebar = () => {
   const { tags, counts, load: loadTags } = useTagsStore()
@@ -15,8 +31,8 @@ const Sidebar = () => {
   const [tagQuery, setTagQuery] = useState('')
 
   useEffect(() => {
-    loadTags()
-    loadNotes()
+    void loadTags()
+    void loadNotes()
   }, [loadTags, loadNotes])
 
   const filteredTags = tags.filter((t) => t.name.toLowerCase().includes(tagQuery.toLowerCase()))
@@ -64,7 +80,7 @@ const Sidebar = () => {
       <section className="bg-white rounded-lg shadow-sm p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
-            <Tag size={14} className="text-gray-500" />
+            <TagIcon size={14} className="text-gray-500" />
             <h3 className="text-sm font-semibold text-gray-700">标签</h3>
           </div>
           <span className="text-xs text-gray-400">{activeTags.length}</span>
@@ -108,7 +124,7 @@ const Sidebar = () => {
   )
 }
 
-const StatusPill = ({ icon, label, count, active, onClick }) => (
+const StatusPill = ({ icon, label, count, active, onClick }: StatusPillProps) => (
   <button
     onClick={onClick}
     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-3 rounded-lg text-xs transition-colors ${
@@ -123,7 +139,7 @@ const StatusPill = ({ icon, label, count, active, onClick }) => (
   </button>
 )
 
-const TagRow = ({ tag, count, active, onClick }) => (
+const TagRow = ({ tag, count, active, onClick }: TagRowProps) => (
   <button
     onClick={onClick}
     title={`#${tag.name} · ${count} 条`}

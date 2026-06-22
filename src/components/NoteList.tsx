@@ -7,24 +7,32 @@
  * - 整页自然滚动
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { CheckCircle2, Circle, Trash2, Pencil, X as XIcon } from 'lucide-react'
 import { useNotesStore } from '@/stores/useNotesStore'
 import { useTagsStore } from '@/stores/useTagsStore'
 import { notesRepo } from '@/repositories/notesRepo'
 import { extractTagNames } from '@/lib/tags'
 import { db } from '@/lib/db'
+import type { Note, Tag } from '@/types'
 
 const TAG_RE = /#([\w一-鿿-]+)/g
 
-const NoteList = ({ activeId, onSelect, onTagClick }) => {
-  const { notes, statusFilter, searchQuery, activeTagId, setStatusFilter, setSearchQuery, load, resetFilters } = useNotesStore()
+export interface NoteListProps {
+  activeId: string | null
+  onSelect: (id: string) => void
+  onTagClick?: (e: MouseEvent, tagId: string) => void
+}
+
+const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
+  const { notes, statusFilter, searchQuery, activeTagId, load, resetFilters } = useNotesStore()
   const { tags, load: loadTags } = useTagsStore()
   // 当前在「就地编辑」的笔记 id
-  const [editingId, setEditingId] = useState(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   useEffect(() => {
-    load()
-    loadTags()
+    void load()
+    void loadTags()
   }, [load, loadTags])
 
   const filtered = useMemo(() => {
@@ -34,52 +42,53 @@ const NoteList = ({ activeId, onSelect, onTagClick }) => {
         if (searchQuery && !n.content.toLowerCase().includes(searchQuery.toLowerCase())) return false
         return true
       })
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [notes, statusFilter, searchQuery])
 
-  const [linkMap, setLinkMap] = useState(new Map())
+  const [linkMap, setLinkMap] = useState<Map<string, string[]>>(new Map())
   useEffect(() => {
     let cancelled = false
-    const load = async () => {
+    const loadLinks = async () => {
       const links = await db.note_tags.filter((l) => !l.deleted_at).toArray()
       if (cancelled) return
-      const map = new Map()
+      const map = new Map<string, string[]>()
       for (const l of links) {
-        if (!map.has(l.note_id)) map.set(l.note_id, [])
-        map.get(l.note_id).push(l.tag_id)
+        const arr = map.get(l.note_id) ?? []
+        arr.push(l.tag_id)
+        map.set(l.note_id, arr)
       }
       setLinkMap(map)
     }
-    load()
-    const handler = () => load()
+    void loadLinks()
+    const handler = (): void => void loadLinks()
     window.addEventListener('data-updated', handler)
-    return () => {
+    return (): void => {
       cancelled = true
       window.removeEventListener('data-updated', handler)
     }
   }, [notes, tags])
 
-  const handleToggleStatus = async (e, n) => {
+  const handleToggleStatus = async (e: MouseEvent, n: Note) => {
     e.stopPropagation()
     if (editingId === n.id) return
     const next = n.status === 'completed' ? 'pending' : 'completed'
     await notesRepo.setStatus(n.id, next)
   }
 
-  const handleDelete = async (e, n) => {
+  const handleDelete = async (e: MouseEvent, n: Note) => {
     e.stopPropagation()
     if (editingId === n.id) return
     if (!confirm('确定删除？30 天内可在回收站恢复。')) return
     await notesRepo.softDelete(n.id)
   }
 
-  const handleEdit = (e, n) => {
+  const handleEdit = (e: MouseEvent, n: Note) => {
     e.stopPropagation()
     onSelect(n.id)
     setEditingId(n.id)
   }
 
-  const handleSave = async (n, newContent) => {
+  const handleSave = async (n: Note, newContent: string) => {
     const trimmed = newContent.trim()
     if (!trimmed) {
       alert('内容不能为空')
@@ -90,11 +99,11 @@ const NoteList = ({ activeId, onSelect, onTagClick }) => {
       await notesRepo.update(n.id, { content: newContent })
       setEditingId(null)
     } catch (e) {
-      alert('保存失败：' + e.message)
+      alert('保存失败：' + (e instanceof Error ? e.message : String(e)))
     }
   }
 
-  const handleCancel = (n, originalContent, currentContent) => {
+  const handleCancel = (n: Note, originalContent: string, currentContent: string) => {
     if (currentContent !== originalContent) {
       if (!confirm('有未保存的修改，确定取消？')) return
     }
@@ -102,7 +111,7 @@ const NoteList = ({ activeId, onSelect, onTagClick }) => {
   }
 
   const tagByName = useMemo(() => {
-    const m = new Map()
+    const m = new Map<string, Tag>()
     for (const t of tags) m.set(t.name, t)
     return m
   }, [tags])
@@ -144,6 +153,21 @@ const NoteList = ({ activeId, onSelect, onTagClick }) => {
   )
 }
 
+interface NoteRowProps {
+  note: Note
+  active: boolean
+  editing: boolean
+  onClick: () => void
+  onToggleStatus: (e: MouseEvent) => void
+  onEdit: (e: MouseEvent) => void
+  onDelete: (e: MouseEvent) => void
+  onSave: (content: string) => Promise<void> | void
+  onCancel: (original: string, current: string) => void
+  onTagClick?: (e: MouseEvent, tagId: string) => void
+  tagByName: Map<string, Tag>
+  tagIds: string[]
+}
+
 const NoteRow = ({
   note,
   active,
@@ -156,8 +180,8 @@ const NoteRow = ({
   onCancel,
   onTagClick,
   tagByName,
-  tagIds,
-}) => {
+  tagIds: _tagIds,
+}: NoteRowProps) => {
   if (editing) {
     return (
       <NoteRowEditor
@@ -221,13 +245,18 @@ const NoteRow = ({
 
 /**
  * 就地编辑模式 —— 卡片内嵌入 textarea + 保存/取消
- * - 实时识别 #tag 显示在下方
- * - Ctrl+Enter 保存，Esc 取消
  */
-const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
+interface NoteRowEditorProps {
+  note: Note
+  onSave: (content: string) => Promise<void> | void
+  onCancel: (original: string, current: string) => void
+  tagByName: Map<string, Tag>
+}
+
+const NoteRowEditor = ({ note, onSave, onCancel, tagByName: _tagByName }: NoteRowEditorProps) => {
   const [content, setContent] = useState(note.content)
   const [saving, setSaving] = useState(false)
-  const taRef = useRef(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     taRef.current?.focus()
@@ -253,13 +282,13 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
     onCancel(note.content, content)
   }
 
-  const handleKey = (e) => {
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       handleCancel()
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
-      handleSave()
+      void handleSave()
     }
   }
 
@@ -300,7 +329,7 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
             取消
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); handleSave() }}
+            onClick={(e) => { e.stopPropagation(); void handleSave() }}
             disabled={saving}
             className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#0077B6] text-white rounded-lg hover:bg-[#005f8c] disabled:opacity-50 transition-colors"
           >
@@ -316,23 +345,27 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName }) => {
 /**
  * 渲染内容，tag chip 保留在原文位置（不脱出来）
  */
-const renderContentWithTags = (content, tagByName, onTagClick) => {
-  const parts = []
+const renderContentWithTags = (
+  content: string,
+  tagByName: Map<string, Tag>,
+  onTagClick?: (e: MouseEvent, tagId: string) => void,
+) => {
+  const parts: React.ReactNode[] = []
   let lastIndex = 0
-  let match
+  let match: RegExpExecArray | null
   TAG_RE.lastIndex = 0
   while ((match = TAG_RE.exec(content)) !== null) {
     if (match.index > lastIndex) {
       parts.push(<span key={`t-${lastIndex}`}>{content.slice(lastIndex, match.index)}</span>)
     }
-    const name = match[1]
+    const name = match[1] as string
     const tag = tagByName.get(name)
     parts.push(
       <button
         key={`tag-${match.index}`}
         onClick={(e) => {
           e.stopPropagation()
-          if (tag) onTagClick?.(e, tag.id)
+          if (tag && onTagClick) onTagClick(e, tag.id)
         }}
         className="inline-flex items-center text-xs px-2 py-0.5 mx-px rounded-full font-medium bg-tag-bg text-tag transition-colors hover:bg-tag-bg-hover"
         title={tag ? `筛选 #${name}` : `#${name}（本地无实体）`}
@@ -348,7 +381,7 @@ const renderContentWithTags = (content, tagByName, onTagClick) => {
   return parts
 }
 
-const formatTime = (iso) => {
+const formatTime = (iso: string): string => {
   const d = new Date(iso)
   const now = new Date()
   const hh = d.getHours().toString().padStart(2, '0')

@@ -11,13 +11,14 @@ import { db } from '@/lib/db'
 import { notesRepo } from '@/repositories/notesRepo'
 import { tagsRepo } from '@/repositories/tagsRepo'
 import { pickWinner } from '@/lib/conflict'
+import type { ConflictRecord, Note, Tag, NoteTag } from '@/types'
 
 export const ConflictBanner = () => {
   const { conflicts, unread, load } = useConflictsStore()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   if (conflicts.length === 0) return null
@@ -36,8 +37,12 @@ export const ConflictBanner = () => {
   )
 }
 
-const ConflictDialog = ({ onClose }) => {
-  const { conflicts, clear } = useConflictsStore()
+interface ConflictDialogProps {
+  onClose: () => void
+}
+
+const ConflictDialog = ({ onClose }: ConflictDialogProps) => {
+  const { conflicts, clear: _clear } = useConflictsStore()
   const [index, setIndex] = useState(0)
   const conflict = conflicts[index]
 
@@ -78,17 +83,17 @@ const ConflictDialog = ({ onClose }) => {
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
           <div className="text-xs text-gray-400">
             LWW 推荐：
-            {pickWinner(conflict.local_data, conflict.cloud_data) === conflict.cloud_data ? '云端' : '本地'}
+            {pickWinner(conflict.local_data as Note | Tag | NoteTag, conflict.cloud_data as Note | Tag | NoteTag) === conflict.cloud_data ? '云端' : '本地'}
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => resolve(conflict, 'local')}
+              onClick={() => void resolve(conflict, 'local')}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               用本地
             </button>
             <button
-              onClick={() => resolve(conflict, 'cloud')}
+              onClick={() => void resolve(conflict, 'cloud')}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               用云端
@@ -114,27 +119,27 @@ const ConflictDialog = ({ onClose }) => {
   )
 }
 
-const resolve = async (conflict, choice) => {
-  const { entity_type, entity_id, local_data, cloud_data } = conflict
-  const winner = pickWinner(local_data, cloud_data)
+const resolve = async (conflict: ConflictRecord, choice: 'local' | 'cloud' | 'merge') => {
+  const { entity_type, entity_id: _entity_id, local_data, cloud_data } = conflict
+  const winner = pickWinner(local_data as Note | Tag | NoteTag, cloud_data as Note | Tag | NoteTag)
   // 自动：若用户选 LWW 胜出版本，写回本地并标记 sync_status=pending 让 push 覆盖云端
   // 若用户选另一边：写回对应版本
-  let chosen
-  if (choice === 'local') chosen = local_data
-  else if (choice === 'cloud') chosen = cloud_data
+  let chosen: Note | Tag | NoteTag
+  if (choice === 'local') chosen = local_data as Note | Tag | NoteTag
+  else if (choice === 'cloud') chosen = cloud_data as Note | Tag | NoteTag
   else chosen = winner // LWW 胜出
 
-  const finalRow = {
+  const finalRow: Note | Tag | NoteTag = {
     ...chosen,
     sync_status: 'pending',
     last_synced_at: null,
-  }
+  } as Note | Tag | NoteTag
   if (entity_type === 'notes') {
-    await notesRepo._putDirect(finalRow)
+    await notesRepo._putDirect(finalRow as Note)
   } else if (entity_type === 'tags') {
-    await tagsRepo._putDirect(finalRow)
+    await tagsRepo._putDirect(finalRow as Tag)
   } else if (entity_type === 'note_tags') {
-    await db.note_tags.put(finalRow)
+    await db.note_tags.put(finalRow as NoteTag)
   }
   // 删除冲突记录
   await db.conflicts.delete(conflict.id)

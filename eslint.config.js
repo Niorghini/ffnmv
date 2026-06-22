@@ -67,6 +67,11 @@ export default [
       // JS 规则在 TS 文件里关闭（TS 类型系统更精确）
       'no-undef': 'off',
       'no-unused-vars': 'off',
+      // TS unused-vars 配置：接受 _ 前缀的变量（约定"故意不用"）
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
+      ],
       // 迁移期允许 any 但需有理由（用注释解释）
       '@typescript-eslint/no-explicit-any': 'error',
       // 空函数允许（事件处理器常见）

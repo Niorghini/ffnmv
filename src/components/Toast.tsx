@@ -7,9 +7,15 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 
-export default function Toast({ message, duration = 0, onClose }) {
+export interface ToastProps {
+  message: string
+  duration?: number
+  onClose?: () => void
+}
+
+export default function Toast({ message, duration = 0, onClose }: ToastProps) {
   useEffect(() => {
-    if (!duration) return
+    if (!duration || !onClose) return
     const t = setTimeout(onClose, duration)
     return () => clearTimeout(t)
   }, [duration, onClose])

@@ -1,5 +1,5 @@
 /**
- * 网络异常全局兜底（仅 native 平台生效）
+ * OfflineBoundary —— 网络异常全局兜底（仅 native 平台生效）
  * - 首次打开 + 离线 + 无缓存：完全兜底页 + 重试按钮
  * - 离线 + 有缓存：顶部条幅 + 正常 App
  * - 在线：透传 children（web 端恒为在线，等价透传）
@@ -7,12 +7,17 @@
  * 位置：App.jsx 里包在 <AuthedRoutes> 外，Login 页豁免
  */
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { WifiOff } from 'lucide-react'
 import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
 import { db } from '@/lib/db'
 
-export function OfflineBoundary({ children }) {
+export interface OfflineBoundaryProps {
+  children: ReactNode
+}
+
+export function OfflineBoundary({ children }: OfflineBoundaryProps) {
   const [online, setOnline] = useState(true)
   const [hasCache, setHasCache] = useState(true)
 
@@ -27,10 +32,13 @@ export function OfflineBoundary({ children }) {
       setOnline(status.connected)
       setHasCache(noteCount > 0)
     }
-    check()
+    void check()
     if (Capacitor.isNativePlatform()) {
-      const handler = (s) => setOnline(s.connected)
-      const handle = Network.addListener('networkStatusChange', handler)
+      const handler = (s: { connected: boolean }) => setOnline(s.connected)
+      // Capacitor 运行时同步返回 handle，但 TS 类型声明为 Promise；cast 保留原 JS 行为
+      const handle = Network.addListener('networkStatusChange', handler) as unknown as {
+        remove: () => void
+      }
       return () => {
         mounted = false
         handle.remove()

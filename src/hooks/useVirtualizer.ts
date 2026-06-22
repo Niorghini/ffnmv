@@ -4,10 +4,27 @@
  * - 用 ResizeObserver 追踪容器高度
  * - 1w 行 < 50ms 渲染
  */
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, type RefObject } from 'react'
 
-export const useVirtualizer = ({ count, rowHeight, overscan = 5 }) => {
-  const containerRef = useRef(null)
+export interface UseVirtualizerOptions {
+  count: number
+  rowHeight: number
+  overscan?: number
+}
+
+export interface UseVirtualizerResult {
+  containerRef: RefObject<HTMLDivElement>
+  totalHeight: number
+  visible: number[]
+  offsetY: number
+}
+
+export const useVirtualizer = ({
+  count,
+  rowHeight,
+  overscan = 5,
+}: UseVirtualizerOptions): UseVirtualizerResult => {
+  const containerRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
 
@@ -32,8 +49,8 @@ export const useVirtualizer = ({ count, rowHeight, overscan = 5 }) => {
     count,
     Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscan,
   )
-  const visible = useMemo(() => {
-    const arr = []
+  const visible = useMemo<number[]>(() => {
+    const arr: number[] = []
     for (let i = startIndex; i < endIndex; i++) {
       arr.push(i)
     }

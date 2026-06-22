@@ -9,17 +9,21 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { useSyncStore } from '@/stores/useSyncStore'
 import { signOutAndCleanup } from '@/lib/auth'
 
-const UserMenu = ({ onSync }) => {
+export interface UserMenuProps {
+  onSync?: () => void
+}
+
+const UserMenu = ({ onSync }: UserMenuProps) => {
   const { user } = useAuthStore()
   const { status, pending, online, lastSyncAt, error, lastSyncTimes } = useSyncStore()
   const [open, setOpen] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const containerRef = useRef(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
-    const handler = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
       }
     }
@@ -85,7 +89,7 @@ const UserMenu = ({ onSync }) => {
             <button
               type="button"
               role="menuitem"
-              onClick={handleSignOut}
+              onClick={() => void handleSignOut()}
               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
             >
               <LogOut size={12} />

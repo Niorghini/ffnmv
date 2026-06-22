@@ -10,17 +10,24 @@ import { Send } from 'lucide-react'
 import { notesRepo } from '@/repositories/notesRepo'
 import { tagsRepo } from '@/repositories/tagsRepo'
 import { extractTagNames } from '@/lib/tags'
+import type { Note } from '@/types'
 
 const DEBOUNCE_MS = 300
 const MAX_CHARS = 10000 // PRD 3.2.1：content 最大 10000 字符
 
-const Editor = ({ note, onSaved, onCancel }) => {
+export interface EditorProps {
+  note?: Note
+  onSaved?: () => void
+  onCancel?: () => void
+}
+
+const Editor = ({ note, onSaved, onCancel: _onCancel }: EditorProps) => {
   const [content, setContent] = useState(note?.content ?? '')
-  const [tags, setTags] = useState([])
+  const [tags, setTags] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState(null)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [focused, setFocused] = useState(false)
-  const debounceRef = useRef(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setContent(note?.content ?? '')
@@ -31,9 +38,9 @@ const Editor = ({ note, onSaved, onCancel }) => {
     setTags(extractTagNames(content))
   }, [content])
 
-  const scheduleAutoSave = (next) => {
+  const scheduleAutoSave = (next: string) => {
     if (!note?.id) return
-    clearTimeout(debounceRef.current)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       setSaving(true)
       try {
@@ -46,7 +53,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
     }, DEBOUNCE_MS)
   }
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value
     setContent(v)
     if (note?.id) scheduleAutoSave(v)
@@ -61,10 +68,10 @@ const Editor = ({ note, onSaved, onCancel }) => {
     onSaved?.()
   }
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!note && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
-      handleSubmit()
+      void handleSubmit()
     }
   }
 
@@ -128,7 +135,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
                 {charCount} 字
               </span>
               <button
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
                 disabled={!canSend}
                 className="flex items-center gap-1 px-3 py-1.5 bg-[#0077B6] text-white text-sm rounded-md hover:bg-[#005f8c] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
               >
@@ -143,7 +150,7 @@ const Editor = ({ note, onSaved, onCancel }) => {
   )
 }
 
-const formatTime = (d) => {
+const formatTime = (d: Date | string): string => {
   const x = typeof d === 'string' ? new Date(d) : d
   const h = x.getHours().toString().padStart(2, '0')
   const m = x.getMinutes().toString().padStart(2, '0')
