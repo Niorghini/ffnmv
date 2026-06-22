@@ -148,7 +148,7 @@ const TagRow = ({ tag, count, active, onClick }: TagRowProps) => (
   <button
     onClick={onClick}
     title={`#${tag.name} · ${count} 条`}
-    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors border ${
+    className={`inline-flex items-center gap-1 px-2 py-px leading-none rounded-full text-xs transition-colors border ${
       active
         ? 'bg-tag text-white border-tag font-medium shadow-sm'
         : 'bg-tag-bg text-tag border-tag/30 hover:bg-tag-bg-hover'
