@@ -6,7 +6,7 @@
  * - 启动 auto-archive scheduler
  * - 启动 cleanup
  */
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useState, lazy, Suspense, type ReactElement } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { Network } from '@capacitor/network'
@@ -26,7 +26,7 @@ const MainApp = lazy(() => import('@/pages/MainApp'))
 const Trash = lazy(() => import('@/pages/Trash'))
 const Settings = lazy(() => import('@/pages/Settings'))
 
-const PageFallback = () => (
+const PageFallback = (): ReactElement => (
   <div className="flex items-center justify-center h-screen text-gray-500 text-sm">加载中...</div>
 )
 
@@ -43,7 +43,7 @@ function AuthedRoutes() {
   )
 }
 
-function App() {
+function App(): ReactElement {
   const { user, initialized, init } = useAuthStore()
   const [dbReady, setDbReady] = useState(false)
   const [showLegacyToast, setShowLegacyToast] = useState(false)
@@ -73,13 +73,13 @@ function App() {
   // 登录态切换
   useEffect(() => {
     if (!user) {
-      stopSync()
+      void stopSync()
       stopArchiveScheduler()
       return
     }
-    startSync().catch((err) => console.error('Sync start failed:', err))
+    void startSync().catch((err: unknown) => console.error('Sync start failed:', err))
     startArchiveScheduler()
-    runCleanup().catch((err) => console.warn('Cleanup failed:', err))
+    runCleanup().catch((err: unknown) => console.warn('Cleanup failed:', err))
     return () => {
       stopArchiveScheduler()
     }

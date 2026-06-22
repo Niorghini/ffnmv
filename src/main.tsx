@@ -4,7 +4,7 @@ import { BrowserRouter, HashRouter } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { SplashScreen } from '@capacitor/splash-screen'
-import App from './App.jsx'
+import App from './App'
 import './index.css'
 
 // 根据部署路径设置浏览器 tab 标题(同步执行,避免闪一下旧标题)
@@ -20,7 +20,7 @@ if (typeof window !== 'undefined') {
 const Router = Capacitor.isNativePlatform() ? HashRouter : BrowserRouter
 const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <Router future={ROUTER_FUTURE}>
     <App />
   </Router>,
@@ -28,7 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 if (Capacitor.isNativePlatform()) {
   // Android 物理返回键：优先 history.back()，不能回退就退出 App
-  CapApp.addListener('backButton', ({ canGoBack }) => {
+  void CapApp.addListener('backButton', ({ canGoBack }) => {
     if (!canGoBack) CapApp.exitApp()
     else window.history.back()
   })
@@ -37,7 +37,7 @@ if (Capacitor.isNativePlatform()) {
   // 双 rAF 等首帧渲染完再隐藏 splash，避免白闪
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      SplashScreen.hide()
+      void SplashScreen.hide()
     })
   })
 }

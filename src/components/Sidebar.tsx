@@ -25,7 +25,12 @@ interface TagRowProps {
   onClick: () => void
 }
 
-const Sidebar = () => {
+export interface SidebarProps {
+  // MainApp 调用时传入但 Sidebar 内部未使用（保留以维持调用约定不变）
+  onConflictClick?: () => void
+}
+
+const Sidebar = ({ onConflictClick: _onConflictClick }: SidebarProps = {}) => {
   const { tags, counts, load: loadTags } = useTagsStore()
   const { activeTagId, setActiveTagId, notes, setStatusFilter, statusFilter, load: loadNotes } = useNotesStore()
   const [tagQuery, setTagQuery] = useState('')

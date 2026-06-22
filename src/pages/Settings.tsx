@@ -3,6 +3,7 @@
  * v0.7.0 风格：白底卡片、圆角
  */
 import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft, RefreshCw, LogOut, Eraser, RotateCcw, Download, Upload,
@@ -18,8 +19,23 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useSyncStore } from '@/stores/useSyncStore'
 import { signOutAndCleanup } from '@/lib/auth'
+import type { Tag } from '@/types'
 
-const OPTIONS = [
+type ArchiveDays = 7 | 30 | -1
+
+interface ArchiveOption {
+  value: ArchiveDays
+  label: string
+}
+
+interface PwMessage {
+  type: 'success' | 'error'
+  text: string
+}
+
+type Stats = Awaited<ReturnType<typeof notesRepo.getStats>>
+
+const OPTIONS: ArchiveOption[] = [
   { value: 7, label: '7 天' },
   { value: 30, label: '30 天（推荐）' },
   { value: -1, label: '永不' },
@@ -28,10 +44,10 @@ const OPTIONS = [
 const Settings = () => {
   const { user } = useAuthStore()
   const { lastSyncAt } = useSyncStore()
-  const [days, setDays] = useState(30)
+  const [days, setDays] = useState<ArchiveDays>(30)
   const [saved, setSaved] = useState(false)
-  const [unused, setUnused] = useState(null) // null = 加载中, [] = 没有
-  const [stats, setStats] = useState(null)
+  const [unused, setUnused] = useState<Tag[] | null>(null) // null = 加载中, [] = 没有
+  const [stats, setStats] = useState<Stats | null>(null)
   const [cleaning, setCleaning] = useState(false)
   const [cleanedMsg, setCleanedMsg] = useState('')
   const [resetting, setResetting] = useState(false)
@@ -43,8 +59,8 @@ const Settings = () => {
   const [pwNew, setPwNew] = useState('')
   const [pwConfirm, setPwConfirm] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
-  const [pwMsg, setPwMsg] = useState(null) // { type: 'success' | 'error', text }
-  const fileInputRef = useRef(null)
+  const [pwMsg, setPwMsg] = useState<PwMessage | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const refreshUnused = async () => {
     const u = await tagsRepo.findUnused()
@@ -57,18 +73,20 @@ const Settings = () => {
   }
 
   useEffect(() => {
-    getArchiveAfterDays().then(setDays)
-    refreshUnused()
-    refreshStats()
+    void getArchiveAfterDays().then((d) => setDays((d as ArchiveDays) ?? 30))
+    void refreshUnused()
+    void refreshStats()
     const onUpdate = () => {
-      refreshUnused()
-      refreshStats()
+      void refreshUnused()
+      void refreshStats()
     }
     window.addEventListener('data-updated', onUpdate)
-    return () => window.removeEventListener('data-updated', onUpdate)
+    return (): void => {
+      window.removeEventListener('data-updated', onUpdate)
+    }
   }, [])
 
-  const handleChange = async (v) => {
+  const handleChange = async (v: ArchiveDays) => {
     setDays(v)
     await setArchiveAfterDays(v)
     setSaved(true)
@@ -96,7 +114,7 @@ const Settings = () => {
     URL.revokeObjectURL(url)
   }
 
-  const handleImportFile = async (e) => {
+  const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     // 重置 value 使相同文件可重新触发
     e.target.value = ''
@@ -105,7 +123,7 @@ const Settings = () => {
     setImportMsg('')
     try {
       const text = await file.text()
-      let raw
+      let raw: unknown
       try {
         raw = JSON.parse(text)
       } catch {
@@ -119,20 +137,20 @@ const Settings = () => {
       }
       const ok = confirm(
         `即将合并导入：\n` +
-        `  笔记 ${raw.notes.length} 条、标签 ${raw.tags.length} 个、链接 ${raw.noteTags.length} 个\n\n` +
+        `  笔记 ${(raw as { notes: unknown[] }).notes.length} 条、标签 ${(raw as { tags: unknown[] }).tags.length} 个、链接 ${(raw as { noteTags: unknown[] }).noteTags.length} 个\n\n` +
         `合并规则：按 id / [note_id+tag_id] 去重覆盖；不同 id 的内容两边都保留。\n` +
         `导入完成后会推送到云端。\n\n` +
         `继续？`,
       )
       if (!ok) return
-      const stats = await importData(raw)
+      const statsResult = await importData(raw)
       setImportMsg(
-        `导入完成 · 笔记 新增 ${stats.notes.added} / 覆盖 ${stats.notes.updated}，` +
-        `标签 新增 ${stats.tags.added} / 覆盖 ${stats.tags.updated}，` +
-        `链接 新增 ${stats.noteTags.added} / 覆盖 ${stats.noteTags.updated}`,
+        `导入完成 · 笔记 新增 ${statsResult.notes.added} / 覆盖 ${statsResult.notes.updated}，` +
+        `标签 新增 ${statsResult.tags.added} / 覆盖 ${statsResult.tags.updated}，` +
+        `链接 新增 ${statsResult.noteTags.added} / 覆盖 ${statsResult.noteTags.updated}`,
       )
     } catch (err) {
-      setImportMsg(`导入失败：${err.message}`)
+      setImportMsg(`导入失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setImporting(false)
     }
@@ -155,7 +173,7 @@ const Settings = () => {
       await refreshUnused()
       await refreshStats()
     } catch (e) {
-      alert('删除失败：' + e.message)
+      alert('删除失败：' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setCleaning(false)
     }
@@ -172,7 +190,7 @@ const Settings = () => {
       await refreshStats()
       await refreshUnused()
     } catch (e) {
-      alert('清理失败：' + e.message)
+      alert('清理失败：' + (e instanceof Error ? e.message : String(e)))
     } finally {
       setCleaning(false)
     }
@@ -193,7 +211,7 @@ const Settings = () => {
       alert(`重置完成！\n\n本地：${result.localStores} 个 store 已清空\n云端：${cloud}\n\n页面将刷新。`)
       window.location.reload()
     } catch (e) {
-      alert('重置失败：' + e.message)
+      alert('重置失败：' + (e instanceof Error ? e.message : String(e)))
       setResetting(false)
     }
   }
@@ -201,10 +219,15 @@ const Settings = () => {
   const handleChangePassword = async () => {
     setPwMsg(null)
     // 客户端预校验
-    if (!pwCurrent) return setPwMsg({ type: 'error', text: '请输入当前密码' })
-    if (pwNew.length < 8) return setPwMsg({ type: 'error', text: '新密码至少 8 位' })
-    if (pwNew !== pwConfirm) return setPwMsg({ type: 'error', text: '两次新密码不一致' })
-    if (pwNew === pwCurrent) return setPwMsg({ type: 'error', text: '新密码不能与当前密码相同' })
+    if (!pwCurrent) { setPwMsg({ type: 'error', text: '请输入当前密码' }); return }
+    if (pwNew.length < 8) { setPwMsg({ type: 'error', text: '新密码至少 8 位' }); return }
+    if (pwNew !== pwConfirm) { setPwMsg({ type: 'error', text: '两次新密码不一致' }); return }
+    if (pwNew === pwCurrent) { setPwMsg({ type: 'error', text: '新密码不能与当前密码相同' }); return }
+
+    if (!user?.email) {
+      setPwMsg({ type: 'error', text: '用户未登录' })
+      return
+    }
 
     setPwSaving(true)
     try {
@@ -240,7 +263,7 @@ const Settings = () => {
         setPwMsg(null)
       }, 1800)
     } catch (e) {
-      setPwMsg({ type: 'error', text: e?.message || '改密失败' })
+      setPwMsg({ type: 'error', text: e instanceof Error ? e.message : '改密失败' })
     } finally {
       setPwSaving(false)
     }
@@ -266,14 +289,14 @@ const Settings = () => {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={handleSync}
+              onClick={() => void handleSync()}
               className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
             >
               <RefreshCw size={14} />
               立即同步
             </button>
             <button
-              onClick={signOutAndCleanup}
+              onClick={() => void signOutAndCleanup()}
               className="text-sm px-3 py-1.5 border border-red-500 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-1.5 transition-colors ml-auto"
             >
               <LogOut size={14} />
@@ -329,7 +352,7 @@ const Settings = () => {
                 <div className="flex items-center gap-3 pt-1">
                   <button
                     type="button"
-                    onClick={handleChangePassword}
+                    onClick={() => void handleChangePassword()}
                     disabled={pwSaving}
                     className="text-sm px-3 py-1.5 bg-[#0077B6] text-white rounded-lg hover:bg-[#005f8c] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
@@ -355,7 +378,7 @@ const Settings = () => {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={handleExport}
+              onClick={() => void handleExport()}
               className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
             >
               <Download size={14} />
@@ -373,7 +396,7 @@ const Settings = () => {
               ref={fileInputRef}
               type="file"
               accept=".json,application/json"
-              onChange={handleImportFile}
+              onChange={(e) => void handleImportFile(e)}
               className="hidden"
             />
           </div>
@@ -396,7 +419,7 @@ const Settings = () => {
                   type="radio"
                   name="archive-days"
                   checked={days === opt.value}
-                  onChange={() => handleChange(opt.value)}
+                  onChange={() => void handleChange(opt.value)}
                   className="text-[#0077B6] focus:ring-[#0077B6]"
                 />
                 <span>{opt.label}</span>
@@ -405,7 +428,7 @@ const Settings = () => {
           </div>
           {saved && <div className="text-xs text-[#0077B6]">已保存</div>}
           <button
-            onClick={handleRunArchive}
+            onClick={() => void handleRunArchive()}
             className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
           >
             立即执行一次归档
@@ -422,7 +445,7 @@ const Settings = () => {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-700">数据库统计</span>
                 <button
-                  onClick={refreshStats}
+                  onClick={() => void refreshStats()}
                   className="text-xs text-[#0077B6] hover:underline"
                   title="重新计算"
                 >
@@ -450,7 +473,7 @@ const Settings = () => {
               )}
               {stats && stats.noteTags.orphan > 0 && (
                 <button
-                  onClick={handleCleanOrphans}
+                  onClick={() => void handleCleanOrphans()}
                   disabled={cleaning}
                   className="text-xs px-3 py-1.5 border border-amber-500 text-amber-700 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
                 >
@@ -462,7 +485,7 @@ const Settings = () => {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-700">未使用标签</span>
                 <button
-                  onClick={refreshUnused}
+                  onClick={() => void refreshUnused()}
                   className="text-xs text-[#0077B6] hover:underline"
                   title="重新计算"
                 >
@@ -486,7 +509,7 @@ const Settings = () => {
                 </ul>
               )}
               <button
-                onClick={handleHardDeleteUnused}
+                onClick={() => void handleHardDeleteUnused()}
                 disabled={cleaning || !unused || unused.length === 0}
                 className="text-xs px-3 py-1.5 border border-red-500 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
               >
@@ -502,7 +525,7 @@ const Settings = () => {
           <h2 className="text-sm font-medium text-red-600 mb-3">危险操作</h2>
           <div className="space-y-2">
             <button
-              onClick={handleFactoryReset}
+              onClick={() => void handleFactoryReset()}
               disabled={resetting}
               className="w-full text-sm px-3 py-1.5 border-2 border-red-600 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 flex items-center gap-1.5 justify-center transition-colors"
             >

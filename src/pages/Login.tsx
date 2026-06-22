@@ -3,14 +3,16 @@
  * - 居中卡片
  * - 蓝色主色
  */
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import logoUrl from '/logo.png'
 
+type Mode = 'signin' | 'signup'
+
 export default function Login() {
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
+  const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -23,7 +25,7 @@ export default function Login() {
   const passwordMismatch = isSignup && confirmPassword.length > 0 && password !== confirmPassword
   const passwordTooShort = isSignup && password.length > 0 && password.length < 8
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!email || !password) return
     if (isSignup && password !== confirmPassword) return
@@ -61,7 +63,7 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm p-6 space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="bg-white rounded-lg shadow-sm p-6 space-y-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">邮箱</label>
             <input

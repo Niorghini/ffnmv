@@ -5,8 +5,7 @@
  * - 左栏 flex-1：Editor（顶部）+ SearchBar + NoteList
  * - 右栏 lg:w-80：Sidebar（sync + 状态筛选 + 标签 + 操作）
  */
-import { useEffect, useState } from 'react'
-import { db } from '@/lib/db'
+import { useEffect } from 'react'
 import { getSyncManager } from '@/lib/syncInstance'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useNotesStore } from '@/stores/useNotesStore'
@@ -23,10 +22,10 @@ const MainApp = () => {
   const { activeId, setActiveId, activeTagId, setActiveTagId, searchQuery, setSearchQuery, load } = useNotesStore()
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
-  const handleSelect = (id) => {
+  const handleSelect = (id: string) => {
     setActiveId(id)
   }
 
@@ -53,7 +52,7 @@ const MainApp = () => {
           <div className="flex-1 space-y-6 min-w-0">
             <Editor
               key="new"
-              note={null}
+              note={undefined}
               onSaved={() => {}}
               onCancel={() => {}}
             />
@@ -61,7 +60,7 @@ const MainApp = () => {
             <NoteList
               activeId={activeId}
               onSelect={handleSelect}
-              onTagClick={(tagId) => setActiveTagId(tagId === activeTagId ? null : tagId)}
+              onTagClick={(_e, tagId) => setActiveTagId(tagId === activeTagId ? null : tagId)}
             />
           </div>
           <div className="lg:w-80 space-y-4 shrink-0">
