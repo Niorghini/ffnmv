@@ -20,7 +20,7 @@ import { useSyncStore } from '@/stores/useSyncStore'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Note, Tag, NoteTag,
-  EntityType, SyncQueueItem, SyncQueueStatus, SyncEngineStatus, SyncOpType, ConflictRecord,
+  EntityType, SyncQueueItem, SyncQueueStatus, SyncEngineStatus, ConflictRecord,
 } from '@/types'
 import type { FfnDb } from './db'
 import type { Database } from '@/types/api/database'
@@ -566,11 +566,9 @@ export class SyncManager {
 }
 
 const stripUserId = (row: Record<string, unknown>): Record<string, unknown> => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { user_id, ...rest } = row
   return rest
 }
-
-// 抑制 unused 警告：SyncOpType 在 SyncQueueItem 中使用，本文件其他位置未直接引用
-type _UnusedSyncOpType = SyncOpType
 
 export const createSyncManager = (deps: SyncManagerDeps): SyncManager => new SyncManager(deps)

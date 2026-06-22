@@ -5,8 +5,9 @@
  */
 import { db, nowIso } from '@/lib/db'
 import { emitDataUpdated } from '@/lib/tags'
+import type { NoteTag } from '@/types'
 
-const enqueueAttach = (noteId, tagId) =>
+const enqueueAttach = (noteId: string, tagId: string) =>
   db.sync_queue.add({
     type: 'tag_attach',
     entity_type: 'note_tags',
@@ -16,7 +17,7 @@ const enqueueAttach = (noteId, tagId) =>
     created_at: nowIso(),
   })
 
-const enqueueDetach = (noteId, tagId) =>
+const enqueueDetach = (noteId: string, tagId: string) =>
   db.sync_queue.add({
     type: 'tag_detach',
     entity_type: 'note_tags',
@@ -30,16 +31,16 @@ export const noteTagsRepo = {
   /**
    * 追加关联（已存在则跳过）
    */
-  async attach(noteId, tagIds) {
+  async attach(noteId: string, tagIds: string[]): Promise<string[]> {
     if (!tagIds || tagIds.length === 0) return []
     const ts = nowIso()
-    const attached = []
-    await db.transaction('rw', db.note_tags, db.sync_queue, async () => {
+    const attached: string[] = []
+    await db.transaction('rw', [db.note_tags, db.sync_queue], async () => {
       for (const tagId of tagIds) {
-        const key = [noteId, tagId]
+        const key: [string, string] = [noteId, tagId]
         const exists = await db.note_tags.get(key)
         if (exists && !exists.deleted_at) continue
-        const row = {
+        const row: NoteTag = {
           note_id: noteId,
           tag_id: tagId,
           created_at: ts,
@@ -61,11 +62,11 @@ export const noteTagsRepo = {
   /**
    * 删除关联（软删除）
    */
-  async detach(noteId, tagIds) {
+  async detach(noteId: string, tagIds: string[]): Promise<string[]> {
     if (!tagIds || tagIds.length === 0) return []
     const ts = nowIso()
-    const detached = []
-    await db.transaction('rw', db.note_tags, db.sync_queue, async () => {
+    const detached: string[] = []
+    await db.transaction('rw', [db.note_tags, db.sync_queue], async () => {
       for (const tagId of tagIds) {
         const existing = await db.note_tags.get([noteId, tagId])
         if (!existing || existing.deleted_at) continue
@@ -88,11 +89,11 @@ export const noteTagsRepo = {
    * 替换为给定 tagIds 列表
    * 旧的全部 detach（软删除），新的全部 attach
    */
-  async replaceAll(noteId, tagIds) {
+  async replaceAll(noteId: string, tagIds: string[]): Promise<void> {
     const ts = nowIso()
     const desired = new Set(tagIds)
     let changes = 0
-    await db.transaction('rw', db.note_tags, db.sync_queue, async () => {
+    await db.transaction('rw', [db.note_tags, db.sync_queue], async () => {
       const existing = await db.note_tags.where('note_id').equals(noteId).toArray()
       const current = new Set(existing.filter((e) => !e.deleted_at).map((e) => e.tag_id))
       const toAdd = [...desired].filter((id) => !current.has(id))
@@ -128,12 +129,12 @@ export const noteTagsRepo = {
     if (changes > 0) emitDataUpdated('note_tags')
   },
 
-  async getByNote(noteId) {
+  async getByNote(noteId: string): Promise<NoteTag[]> {
     const links = await db.note_tags.where('note_id').equals(noteId).toArray()
     return links.filter((l) => !l.deleted_at)
   },
 
-  async getByTag(tagId) {
+  async getByTag(tagId: string): Promise<NoteTag[]> {
     const links = await db.note_tags.where('tag_id').equals(tagId).toArray()
     return links.filter((l) => !l.deleted_at)
   },
@@ -141,7 +142,7 @@ export const noteTagsRepo = {
   /**
    * 同步层直接 put（绕过入队）
    */
-  async _putDirect(row) {
+  async _putDirect(row: NoteTag): Promise<void> {
     await db.note_tags.put(row)
   },
 }

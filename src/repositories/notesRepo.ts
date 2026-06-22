@@ -12,29 +12,45 @@ import { emitDataUpdated, extractTagNames } from '@/lib/tags'
 import { noteTagsRepo } from './noteTagsRepo'
 import { tagsRepo } from './tagsRepo'
 import { supabase } from '@/lib/supabase'
+import type { Note, NoteTag, SyncOpType, SyncQueueStatus } from '@/types'
 
-const PRIORITY = { create: 1, restore: 3, update: 5, delete: 8 }
+const PRIORITY: Record<SyncOpType, 1 | 3 | 5 | 8> = {
+  create: 1,
+  restore: 3,
+  update: 5,
+  delete: 8,
+  tag_attach: 5,
+  tag_detach: 5,
+}
 
-const enqueue = (type, entityId) =>
+const enqueue = (type: SyncOpType, entityId: string): void => {
   db.sync_queue.add({
     type,
     entity_type: 'notes',
     entity_id: entityId,
-    priority: PRIORITY[type] ?? 5,
-    status: 'pending',
+    priority: PRIORITY[type],
+    status: 'pending' satisfies SyncQueueStatus,
     created_at: nowIso(),
   })
+}
+
+export interface CreateNoteInput {
+  content: string
+  tagIds?: string[]
+}
+
+export interface UpdateNoteInput {
+  content: string
+}
 
 export const notesRepo = {
   /**
    * 创建笔记
-   * @param {{ content: string, tagIds?: string[] }} input
-   * @returns {Promise<object>} 创建后的笔记
    */
-  async create({ content, tagIds = [] }) {
+  async create({ content, tagIds = [] }: CreateNoteInput): Promise<Note> {
     const id = uuidv4()
     const ts = nowIso()
-    const note = {
+    const note: Note = {
       id,
       content: content || '',
       status: 'pending',
@@ -54,6 +70,8 @@ export const notesRepo = {
           note_id: id,
           tag_id: tagId,
           created_at: ts,
+          updated_at: ts,
+          deleted_at: null,
           version: 1,
           sync_status: 'pending',
           last_synced_at: null,
@@ -62,22 +80,17 @@ export const notesRepo = {
       }
     })
     emitDataUpdated('notes', { rows: [note] })
-    emitDataUpdated('note_tags', { rows: tagIds.map((tagId) => ({ note_id: id, tag_id: tagId, deleted_at: null })) })
+    emitDataUpdated('note_tags', { rows: tagIds.map((tagId): NoteTag => ({ note_id: id, tag_id: tagId, created_at: ts, updated_at: ts, deleted_at: null, version: 1, sync_status: 'pending', last_synced_at: null })) })
     return note
   },
 
   /**
    * 更新内容（bump version）
-   * 同时根据新 content 同步 tag 关联：
-   *   - 解析 #tag 名字，findOrCreate 进 tag 库
-   *   - 与当前活跃 link 集合求 diff：
-   *     · 新出现的 tag  → 创建 link
-   *     · 消失的 tag    → 软删 link（保留历史可恢复）
-   *   - 全部入 sync_queue，等 sync 推到云端
+   * 同时根据新 content 同步 tag 关联
    */
-  async update(id, { content }) {
+  async update(id: string, { content }: UpdateNoteInput): Promise<Note> {
     const ts = nowIso()
-    let updated
+    let updated: Note
     // 先在事务外 findOrCreate（不要求在事务内，但 link 写入需要在事务里）
     const desiredNames = [...new Set(extractTagNames(content))]
     const desiredTags = await tagsRepo.findOrCreate(desiredNames)
@@ -110,6 +123,7 @@ export const notesRepo = {
           note_id: id,
           tag_id: tagId,
           created_at: ts,
+          updated_at: ts,
           deleted_at: null,
           version: 1,
           sync_status: 'pending',
@@ -152,12 +166,12 @@ export const notesRepo = {
   /**
    * 设置状态（pending/completed）
    */
-  async setStatus(id, status) {
+  async setStatus(id: string, status: 'pending' | 'completed'): Promise<Note> {
     if (status !== 'pending' && status !== 'completed') {
       throw new Error(`Invalid status: ${status}`)
     }
     const ts = nowIso()
-    let updated
+    let updated: Note
     await db.transaction('rw', db.notes, db.sync_queue, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -182,11 +196,10 @@ export const notesRepo = {
 
   /**
    * 软删除（30 天可恢复）
-   * - 同时软删该笔记的所有活跃 note_tags 链接（避免 orphan）
    */
-  async softDelete(id) {
+  async softDelete(id: string): Promise<Note> {
     const ts = nowIso()
-    let updated
+    let updated: Note
     await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -231,11 +244,10 @@ export const notesRepo = {
 
   /**
    * 恢复软删除
-   * - 同时复活被 softDelete 软删的 note_tags links
    */
-  async restore(id) {
+  async restore(id: string): Promise<Note> {
     const ts = nowIso()
-    let updated
+    let updated: Note
     await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -280,16 +292,8 @@ export const notesRepo = {
 
   /**
    * 物理删除（不可恢复）
-   * - 删 note 行
-   * - 删该 note 的所有 note_tags 链接（避免 orphan）
-   * - 清残留 sync_queue entries
-   * - **同步删云端**：note 行 + note_tags 链接都从 supabase 物理删（best effort，
-   *   云端失败不阻塞本地——下次 sync 不会让云端软删行「复活」回本地）
-   * - **自动清理因此变成未用的 tag**（独占此 note 的 tag）：
-   *     对这个 note 引用过的每个 tag，检查删完之后还有没有活跃 link，
-   *     没有 → hardDelete（本地+云端）
    */
-  async hardDelete(id) {
+  async hardDelete(id: string): Promise<void> {
     // 先收一下这个 note 引用了哪些 tag（用来决定哪些 tag 变孤儿）
     const linksBefore = await db.note_tags.where('note_id').equals(id).toArray()
     const tagIdsToCheck = [...new Set(linksBefore.filter((l) => !l.deleted_at).map((l) => l.tag_id))]
@@ -312,12 +316,12 @@ export const notesRepo = {
         if (noteErr) throw noteErr
       }
     } catch (e) {
-      console.warn(`[hardDelete] 云端删除失败 (note=${id}):`, e?.message || e)
+      console.warn(`[hardDelete] 云端删除失败 (note=${id}):`, e instanceof Error ? e.message : e)
       // 继续本地删除
     }
 
     // 2. 本地事务：删 note + 它的所有 link + 清 sync_queue 残留
-    await db.transaction('rw', db.notes, db.note_tags, db.sync_queue, async () => {
+    await db.transaction('rw', [db.notes, db.note_tags, db.sync_queue], async () => {
       const existing = await db.notes.get(id)
       if (!existing) return
       const links = await db.note_tags.where('note_id').equals(id).toArray()
@@ -329,7 +333,7 @@ export const notesRepo = {
         .and((q) => q.entity_type === 'notes')
         .toArray()
       for (const q of queueItems) {
-        await db.sync_queue.delete(q.id)
+        if (q.id != null) await db.sync_queue.delete(q.id)
       }
       await db.notes.delete(id)
     })
@@ -347,7 +351,7 @@ export const notesRepo = {
       for (const tid of orphanTagIds) {
         const tag = await db.tags.get(tid)
         if (!tag || tag.deleted_at) continue
-        await tagsRepo.hardDelete(tid).catch((e) => {
+        await tagsRepo.hardDelete(tid).catch((e: unknown) => {
           console.warn(`[hardDelete] auto-clean tag ${tag.name} failed:`, e)
         })
       }
@@ -359,7 +363,7 @@ export const notesRepo = {
    * 清理 orphan note_tags（note_id 在 db.notes 里不存在的链接）
    * @returns 被清理的 link 数
    */
-  async cleanOrphanNoteTags() {
+  async cleanOrphanNoteTags(): Promise<number> {
     const allLinks = await db.note_tags.toArray()
     if (allLinks.length === 0) return 0
     const noteIds = [...new Set(allLinks.map((l) => l.note_id))]
@@ -376,9 +380,9 @@ export const notesRepo = {
   /**
    * 标记归档（自动归档使用）
    */
-  async setArchived(id, archived) {
+  async setArchived(id: string, archived: boolean): Promise<Note> {
     const ts = nowIso()
-    let updated
+    let updated: Note
     await db.transaction('rw', db.notes, db.sync_queue, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -405,24 +409,24 @@ export const notesRepo = {
   /**
    * 直接 put 一条（同步层在合并云端数据时使用，绕过入队——同步层会自己处理 sync_status）
    */
-  async _putDirect(note) {
+  async _putDirect(note: Note): Promise<void> {
     await db.notes.put(note)
   },
 
   /**
    * 查询
    */
-  async getById(id) {
+  async getById(id: string): Promise<Note | undefined> {
     return db.notes.get(id)
   },
 
-  async getAll({ includeDeleted = false, includeArchived = false } = {}) {
+  async getAll({ includeDeleted = false, includeArchived = false }: { includeDeleted?: boolean; includeArchived?: boolean } = {}): Promise<Note[]> {
     // sort 由 created_at 索引推下去,deleted/archived 过滤在 cursor 里
     // 跑（IO 仍是全表,但省掉 toArray 中间数组 + 一次额外 JS pass）
     return db.notes
       .orderBy('created_at')
       .reverse()
-      .filter((n) => {
+      .filter((n: Note) => {
         if (!includeDeleted && n.deleted_at) return false
         if (!includeArchived && n.archived_at) return false
         return true
@@ -430,24 +434,28 @@ export const notesRepo = {
       .toArray()
   },
 
-  async getByTag(tagId, { includeDeleted = false } = {}) {
+  async getByTag(tagId: string, { includeDeleted = false }: { includeDeleted?: boolean } = {}): Promise<Note[]> {
     const links = await db.note_tags.where('tag_id').equals(tagId).toArray()
     const noteIds = links.map((l) => l.note_id)
     if (noteIds.length === 0) return []
     const notes = await db.notes.where('id').anyOf(noteIds).toArray()
     return notes
       .filter((n) => (includeDeleted ? true : !n.deleted_at))
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   },
 
-  async getPendingSync() {
+  async getPendingSync(): Promise<Note[]> {
     return db.notes.where('sync_status').anyOf(['pending', 'failed']).toArray()
   },
 
   /**
    * 数据统计：返回每个表的 active / deleted / total + orphan 计数
    */
-  async getStats() {
+  async getStats(): Promise<{
+    notes: { total: number; active: number; deleted: number; archived: number }
+    tags: { total: number; active: number; deleted: number }
+    noteTags: { total: number; active: number; deleted: number; orphan: number }
+  }> {
     const [allNotes, allTags, allLinks] = await Promise.all([
       db.notes.toArray(),
       db.tags.toArray(),
@@ -477,7 +485,7 @@ export const notesRepo = {
   },
 }
 
-const enqueueTagAttach = (noteId, tagId) =>
+const enqueueTagAttach = (noteId: string, tagId: string) =>
   db.sync_queue.add({
     type: 'tag_attach',
     entity_type: 'note_tags',
@@ -486,3 +494,6 @@ const enqueueTagAttach = (noteId, tagId) =>
     status: 'pending',
     created_at: nowIso(),
   })
+
+// 抑制 lint 警告：noteTagsRepo 在 setStatus 等场景未直接引用，但保留以支持循环依赖兜底
+void noteTagsRepo

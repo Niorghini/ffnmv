@@ -3,7 +3,7 @@
  * - 30 天前 deleted_at 的行硬删
  * - 启动时跑一次
  */
-import { db, nowIso } from '@/lib/db'
+import { db } from '@/lib/db'
 import { emitDataUpdated } from '@/lib/tags'
 
 const RETAIN_DAYS = 30
@@ -17,7 +17,6 @@ export interface CleanupStats {
 
 export const runCleanup = async ({ now = Date.now() }: { now?: number } = {}): Promise<CleanupStats> => {
   const cutoff = new Date(now - RETAIN_DAYS * 86400000).toISOString()
-  const ts = nowIso()
   const stats: CleanupStats = { notes: 0, tags: 0, note_tags: 0, conflicts: 0 }
 
   await db.transaction(

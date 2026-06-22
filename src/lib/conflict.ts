@@ -10,7 +10,8 @@
 
 const stripUserId = <T extends object>(row: T): T => {
   if (!row) return row
-  const { user_id: _user_id, ...rest } = row as T & { user_id?: unknown }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user_id, ...rest } = row as T & { user_id?: unknown }
   return rest as T
 }
 

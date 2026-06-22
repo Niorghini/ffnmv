@@ -8,8 +8,9 @@ import { v4 as uuidv4 } from 'uuid'
 import { db, nowIso } from '@/lib/db'
 import { colorFromName, emitDataUpdated } from '@/lib/tags'
 import { supabase } from '@/lib/supabase'
+import type { Tag } from '@/types'
 
-const enqueue = (type, tagId) =>
+const enqueue = (type: 'create' | 'update' | 'delete', tagId: string) =>
   db.sync_queue.add({
     type,
     entity_type: 'tags',
@@ -19,7 +20,7 @@ const enqueue = (type, tagId) =>
     created_at: nowIso(),
   })
 
-const enqueueTagDetach = (noteId, tagId) =>
+const enqueueTagDetach = (noteId: string, tagId: string) =>
   db.sync_queue.add({
     type: 'tag_detach',
     entity_type: 'note_tags',
@@ -34,14 +35,13 @@ export const tagsRepo = {
    * 输入 name 数组，返回已存在/新建的 tag 实体列表
    * 同名去重（按 name）
    */
-  async findOrCreate(names) {
+  async findOrCreate(names: string[]): Promise<Tag[]> {
     if (!names || names.length === 0) return []
     const cleaned = [...new Set(names.map((n) => n.trim()).filter(Boolean))]
     if (cleaned.length === 0) return []
 
-    const result = []
-    const toCreateNames = []
-    const toCreateTags = []
+    const result: Tag[] = []
+    const toCreateTags: Tag[] = []
 
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.where('name').anyOf(cleaned).toArray()
@@ -51,54 +51,51 @@ export const tagsRepo = {
         if (found) {
           result.push(found)
         } else {
-          toCreateNames.push(name)
+          const tag: Tag = {
+            id: uuidv4(),
+            name,
+            color: colorFromName(name),
+            created_at: nowIso(),
+            updated_at: nowIso(),
+            deleted_at: null,
+            version: 1,
+            sync_status: 'pending',
+            last_synced_at: null,
+          }
+          await db.tags.add(tag)
+          await enqueue('create', tag.id)
+          result.push(tag)
+          toCreateTags.push(tag)
         }
-      }
-      for (const name of toCreateNames) {
-        const tag = {
-          id: uuidv4(),
-          name,
-          color: colorFromName(name),
-          created_at: nowIso(),
-          updated_at: nowIso(),
-          deleted_at: null,
-          version: 1,
-          sync_status: 'pending',
-          last_synced_at: null,
-        }
-        await db.tags.add(tag)
-        await enqueue('create', tag.id)
-        result.push(tag)
-        toCreateTags.push(tag)
       }
     })
     if (toCreateTags.length > 0) emitDataUpdated('tags', { rows: toCreateTags })
     return result
   },
 
-  async getById(id) {
+  async getById(id: string): Promise<Tag | undefined> {
     return db.tags.get(id)
   },
 
-  async getByIds(ids) {
+  async getByIds(ids: string[]): Promise<Tag[]> {
     if (!ids || ids.length === 0) return []
     return db.tags.where('id').anyOf(ids).toArray()
   },
 
-  async getByName(name) {
+  async getByName(name: string): Promise<Tag | undefined> {
     return db.tags.where('name').equals(name).first()
   },
 
-  async getAll({ includeDeleted = false } = {}) {
+  async getAll({ includeDeleted = false }: { includeDeleted?: boolean } = {}): Promise<Tag[]> {
     const rows = await db.tags.toArray()
     return rows
       .filter((t) => (includeDeleted ? true : !t.deleted_at))
       .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
   },
 
-  async updateName(id, newName) {
+  async updateName(id: string, newName: string): Promise<Tag> {
     const ts = nowIso()
-    let updated
+    let updated: Tag
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)
@@ -121,9 +118,9 @@ export const tagsRepo = {
     return updated
   },
 
-  async setColor(id, color) {
+  async setColor(id: string, color: string): Promise<Tag> {
     const ts = nowIso()
-    let updated
+    let updated: Tag
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)
@@ -145,10 +142,10 @@ export const tagsRepo = {
     return updated
   },
 
-  async softDelete(id) {
+  async softDelete(id: string): Promise<Tag> {
     const ts = nowIso()
-    let updated
-    await db.transaction('rw', db.tags, db.sync_queue, db.note_tags, async () => {
+    let updated: Tag
+    await db.transaction('rw', [db.tags, db.note_tags, db.sync_queue], async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)
       if (existing.deleted_at) {
@@ -181,20 +178,16 @@ export const tagsRepo = {
 
   /**
    * 合并 source → target
-   * 1. 把所有 (note_id, source_id) 关联改到 (note_id, target_id)（去重）
-   *    - 若 (note_id, target_id) 已活跃：软删 source 端
-   *    - 若 (note_id, target_id) 不存在 / 已软删：软删 source 端 + 复活/新建 target 端
-   * 2. 软删除 source tag
    */
-  async merge(sourceId, targetId) {
+  async merge(sourceId: string, targetId: string): Promise<{ source: Tag; target: Tag }> {
     if (sourceId === targetId) throw new Error('Cannot merge a tag into itself')
     const ts = nowIso()
-    let source
-    let target
-    let deletedSource
-    await db.transaction('rw', db.tags, db.note_tags, db.sync_queue, async () => {
-      source = await db.tags.get(sourceId)
-      target = await db.tags.get(targetId)
+    let source!: Tag
+    let target!: Tag
+    let deletedSource!: Tag
+    await db.transaction('rw', [db.tags, db.note_tags, db.sync_queue], async () => {
+      source = await db.tags.get(sourceId) as Tag
+      target = await db.tags.get(targetId) as Tag
       if (!source || !target) throw new Error('Source or target tag not found')
       const links = await db.note_tags.where('tag_id').equals(sourceId).toArray()
       for (const link of links) {
@@ -231,6 +224,7 @@ export const tagsRepo = {
               note_id: link.note_id,
               tag_id: targetId,
               created_at: link.created_at,
+              updated_at: ts,
               deleted_at: null,
               version: 1,
               sync_status: 'pending',
@@ -265,16 +259,14 @@ export const tagsRepo = {
   /**
    * 给同步层直接 put（绕过入队）
    */
-  async _putDirect(tag) {
+  async _putDirect(tag: Tag): Promise<void> {
     await db.tags.put(tag)
   },
 
   /**
    * 找出"未使用"标签——没有任何活跃 note_tags 引用的标签
-   * (活跃 = link.deleted_at 为 null)
-   * 软删的标签默认视为未使用
    */
-  async findUnused({ includeSoftDeleted = true } = {}) {
+  async findUnused({ includeSoftDeleted = true }: { includeSoftDeleted?: boolean } = {}): Promise<Tag[]> {
     const allLinks = await db.note_tags.toArray()
     const activeLinkTagIds = new Set(
       allLinks.filter((l) => !l.deleted_at).map((l) => l.tag_id),
@@ -290,7 +282,7 @@ export const tagsRepo = {
    * 物理删除一个标签（本地 + 云端 + 清残留 sync_queue）
    * 注意：此操作不可恢复。调用前应已确认无活跃引用。
    */
-  async hardDelete(id) {
+  async hardDelete(id: string): Promise<void> {
     // 1. 云端物理删除（如果有 user 登录 + RLS 允许）
     const { data: userData } = await supabase.auth.getUser()
     if (userData?.user) {
@@ -310,7 +302,7 @@ export const tagsRepo = {
    * 批量硬删除所有未使用标签
    * @returns 删除的数量
    */
-  async hardDeleteUnused() {
+  async hardDeleteUnused(): Promise<number> {
     const unused = await this.findUnused()
     let count = 0
     for (const tag of unused) {
@@ -326,11 +318,9 @@ export const tagsRepo = {
   },
 
   /**
-
-  /**
    * 统计每个 tag 的笔记数（未软删的）
    */
-  async countsByTag({ includeDeleted = false } = {}) {
+  async countsByTag({ includeDeleted = false }: { includeDeleted?: boolean } = {}): Promise<Map<string, number>> {
     const links = await db.note_tags.toArray()
     const visibleLinks = includeDeleted ? links : links.filter((l) => !l.deleted_at)
     const noteIds = [...new Set(visibleLinks.map((l) => l.note_id))]
@@ -339,7 +329,7 @@ export const tagsRepo = {
     const visibleNotes = new Set(
       notes.filter((n) => !n.deleted_at).map((n) => n.id),
     )
-    const counts = new Map()
+    const counts = new Map<string, number>()
     for (const l of visibleLinks) {
       if (!visibleNotes.has(l.note_id)) continue
       counts.set(l.tag_id, (counts.get(l.tag_id) || 0) + 1)
