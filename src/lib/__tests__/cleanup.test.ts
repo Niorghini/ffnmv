@@ -6,9 +6,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db, openDb } from '@/lib/db'
 import { runCleanup } from '@/lib/cleanup'
+import type { Note, Tag, NoteTag, ConflictRecord } from '@/types'
 
 const NOW = new Date('2026-06-02T00:00:00.000Z').getTime()
-const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString()
+const daysAgo = (n: number): string => new Date(NOW - n * 86400000).toISOString()
 
 describe('cleanup', () => {
   beforeEach(async () => {
@@ -25,12 +26,14 @@ describe('cleanup', () => {
       id: 'old', content: '', status: 'pending',
       created_at: daysAgo(60), updated_at: daysAgo(60),
       deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
-    })
+      archived_at: null, last_synced_at: null,
+    } as Note)
     await db.notes.add({
       id: 'new', content: '', status: 'pending',
       created_at: daysAgo(10), updated_at: daysAgo(10),
       deleted_at: daysAgo(5), version: 1, sync_status: 'synced',
-    })
+      archived_at: null, last_synced_at: null,
+    } as Note)
     const stats = await runCleanup({ now: NOW })
     expect(stats.notes).toBe(1)
     expect(await db.notes.get('old')).toBeUndefined()
@@ -42,11 +45,13 @@ describe('cleanup', () => {
       id: 'old', content: '', status: 'pending',
       created_at: daysAgo(60), updated_at: daysAgo(60),
       deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
-    })
+      archived_at: null, last_synced_at: null,
+    } as Note)
     await db.note_tags.add({
       note_id: 'old', tag_id: 't1', created_at: daysAgo(60),
-      deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
-    })
+      updated_at: daysAgo(60), deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
+      last_synced_at: null,
+    } as NoteTag)
     const stats = await runCleanup({ now: NOW })
     expect(stats.note_tags).toBe(1)
     expect(await db.note_tags.get(['old', 't1'])).toBeUndefined()
@@ -57,7 +62,8 @@ describe('cleanup', () => {
       id: 't1', name: 'foo', color: '#000',
       created_at: daysAgo(60), updated_at: daysAgo(60),
       deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
-    })
+      last_synced_at: null,
+    } as Tag)
     const stats = await runCleanup({ now: NOW })
     expect(stats.tags).toBe(1)
     expect(await db.tags.get('t1')).toBeUndefined()
@@ -66,8 +72,8 @@ describe('cleanup', () => {
   it('老的 conflicts 也清', async () => {
     await db.conflicts.add({
       id: 'c1', entity_type: 'notes', entity_id: 'n1',
-      local_data: {}, cloud_data: {}, created_at: daysAgo(31),
-    })
+      local_data: {} as Note, cloud_data: {} as Note, created_at: daysAgo(31),
+    } as ConflictRecord)
     const stats = await runCleanup({ now: NOW })
     expect(stats.conflicts).toBe(1)
     expect(await db.conflicts.get('c1')).toBeUndefined()
@@ -78,7 +84,8 @@ describe('cleanup', () => {
       id: 'recent', content: '', status: 'pending',
       created_at: daysAgo(5), updated_at: daysAgo(5),
       deleted_at: daysAgo(5), version: 1, sync_status: 'synced',
-    })
+      archived_at: null, last_synced_at: null,
+    } as Note)
     const stats = await runCleanup({ now: NOW })
     expect(stats.notes).toBe(0)
   })

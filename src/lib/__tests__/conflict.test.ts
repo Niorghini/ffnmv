@@ -3,11 +3,10 @@
  * 覆盖 PRD 5.3 四种分支
  */
 import { describe, it, expect } from 'vitest'
-import { pickWinner } from '@/lib/conflict'
+import { pickWinner, type ConflictInput } from '@/lib/conflict'
 
-const mk = (over) => ({
+const mk = (over: Partial<ConflictInput> = {}): ConflictInput => ({
   id: 'n1',
-  content: '',
   version: 1,
   updated_at: '2026-01-01T00:00:00.000Z',
   last_sync_device: 'dev-a',

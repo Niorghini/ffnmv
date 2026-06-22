@@ -5,12 +5,27 @@
  * - 基础 CRUD
  * - v0.7.0 升级逻辑
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { db, openDb, detectAndPurgeLegacy, wasLegacyCleaned, markLegacyCleaned, DB_NAME } from '@/lib/db'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { db, openDb, detectAndPurgeLegacy, wasLegacyCleaned, markLegacyCleaned } from '@/lib/db'
+import type { Note } from '@/types'
+
+const mkNote = (over: Partial<Note> = {}): Note => ({
+  id: 'n1',
+  content: 'hello',
+  status: 'pending',
+  created_at: '2026-01-01T00:00:00.000Z',
+  updated_at: '2026-01-01T00:00:00.000Z',
+  deleted_at: null,
+  archived_at: null,
+  version: 1,
+  sync_status: 'pending',
+  last_synced_at: null,
+  ...over,
+})
 
 describe('db', () => {
   beforeEach(async () => {
-    // setup.js 已经在 afterEach 删库；这里确保打开
+    // setup.ts 已经在 afterEach 删库；这里确保打开
     await openDb()
   })
 
@@ -46,17 +61,7 @@ describe('db', () => {
   })
 
   it('notes 基础 CRUD', async () => {
-    const note = {
-      id: 'n1',
-      content: 'hello',
-      status: 'pending',
-      created_at: '2026-01-01T00:00:00.000Z',
-      updated_at: '2026-01-01T00:00:00.000Z',
-      deleted_at: null,
-      version: 1,
-      sync_status: 'pending',
-      last_synced_at: null,
-    }
+    const note = mkNote()
     await db.notes.add(note)
     const got = await db.notes.get('n1')
     expect(got).toMatchObject({ id: 'n1', content: 'hello' })
@@ -66,9 +71,9 @@ describe('db', () => {
 
   it('notes 按 created_at 倒序遍历', async () => {
     await db.notes.bulkAdd([
-      { id: 'a', content: 'first', created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', status: 'pending', sync_status: 'pending', version: 1, deleted_at: null },
-      { id: 'b', content: 'second', created_at: '2026-01-02T00:00:00.000Z', updated_at: '2026-01-02T00:00:00.000Z', status: 'pending', sync_status: 'pending', version: 1, deleted_at: null },
-      { id: 'c', content: 'third', created_at: '2026-01-03T00:00:00.000Z', updated_at: '2026-01-03T00:00:00.000Z', status: 'pending', sync_status: 'pending', version: 1, deleted_at: null },
+      mkNote({ id: 'a', content: 'first', created_at: '2026-01-01T00:00:00.000Z' }),
+      mkNote({ id: 'b', content: 'second', created_at: '2026-01-02T00:00:00.000Z' }),
+      mkNote({ id: 'c', content: 'third', created_at: '2026-01-03T00:00:00.000Z' }),
     ])
     const ordered = await db.notes.orderBy('created_at').reverse().toArray()
     expect(ordered.map((n) => n.id)).toEqual(['c', 'b', 'a'])

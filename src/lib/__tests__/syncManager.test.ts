@@ -1,23 +1,35 @@
 /**
  * SyncManager 测试
- * - 注入 fake supabase + fake clock
- * - 覆盖：拉取合并、推送、冲突入库、realtime 回调、轮询、监听、退避
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { db, openDb } from '@/lib/db'
-import { SyncManager } from '@/lib/syncManager'
-import { createFakeSupabase } from '@/test/fakes/supabase'
+import { SyncManager, type ConflictEvent, type SyncManagerDeps } from '@/lib/syncManager'
+import { createFakeSupabase, type FakeSupabase } from '@/test/fakes/supabase'
+import type { Note, NoteTag } from '@/types'
 
 const DEVICE_ID = 'device-test'
 
-const setupFakeUser = (sb) => {
+const setupFakeUser = (sb: FakeSupabase): void => {
   sb._setUser({ id: 'user-1', email: 'a@b.com' })
 }
 
-const mkNote = (over = {}) => ({
+const mkNote = (over: Partial<Note> = {}): Note => ({
   id: 'n1',
   content: 'hello',
   status: 'pending',
+  created_at: '2026-01-01T00:00:00.000Z',
+  updated_at: '2026-01-01T00:00:00.000Z',
+  deleted_at: null,
+  archived_at: null,
+  version: 1,
+  sync_status: 'pending',
+  last_synced_at: null,
+  ...over,
+})
+
+const mkNoteTag = (over: Partial<NoteTag> = {}): NoteTag => ({
+  note_id: 'n1',
+  tag_id: 't1',
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
   deleted_at: null,
@@ -28,9 +40,9 @@ const mkNote = (over = {}) => ({
 })
 
 describe('SyncManager', () => {
-  let sb
-  let sm
-  let now
+  let sb: FakeSupabase
+  let sm: SyncManager
+  let now: ReturnType<typeof vi.fn>
 
   beforeEach(async () => {
     await openDb()
@@ -43,7 +55,12 @@ describe('SyncManager', () => {
     sb = createFakeSupabase()
     setupFakeUser(sb)
     now = vi.fn(() => 1700000000000)
-    sm = new SyncManager({ db, supabase: sb, deviceId: DEVICE_ID, clock: now })
+    sm = new SyncManager({
+      db: db as unknown as SyncManagerDeps['db'],
+      supabase: sb as unknown as SyncManagerDeps['supabase'],
+      deviceId: DEVICE_ID,
+      clock: now,
+    })
   })
 
   // ── start / stop ───────────────────────────────────────────────────
@@ -57,46 +74,42 @@ describe('SyncManager', () => {
     const result = await sm.start()
     expect(result).toBe(true)
     expect(sm.userId).toBe('user-1')
-    expect(sm._pollTimer).toBeTruthy()
+    expect(sm['_pollTimer']).toBeTruthy()
     await sm.stop()
   })
 
   // ── push ──────────────────────────────────────────────────────────
   it('_pushLocalChanges 把 pending 推上去 + 标 synced + 清队列', async () => {
-    sm.userId = 'user-1' // start() 才会设置；这里直接调 _pushLocalChanges 需要手动设
+    sm.userId = 'user-1'
     const note = mkNote()
     await db.notes.add(note)
-    await sm._pushLocalChanges('notes')
+    await sm['_pushLocalChanges']('notes')
 
-    // 云端有这条
-    const cloud = [...sb.state.tables.notes.values()][0]
-    expect(cloud.id).toBe(note.id)
-    expect(cloud.user_id).toBe('user-1')
-    expect(cloud.last_sync_device).toBe(DEVICE_ID)
+    const cloud = [...sb.state.tables.notes!.values()][0]
+    expect(cloud).toBeTruthy()
+    expect(cloud?.id).toBe(note.id)
+    expect(cloud?.user_id).toBe('user-1')
+    expect(cloud?.last_sync_device).toBe(DEVICE_ID)
 
-    // 本地标记为 synced
     const local = await db.notes.get(note.id)
-    expect(local.sync_status).toBe('synced')
-    expect(local.last_synced_at).toBe(new Date(now()).toISOString())
+    expect(local?.sync_status).toBe('synced')
+    expect(local?.last_synced_at).toBe(new Date(now()).toISOString())
   })
 
   it('_pushLocalChanges 失败抛错（上层重试）', async () => {
     sm.userId = 'user-1'
     await db.notes.add(mkNote())
     sb._failNext('network down')
-    await expect(sm._pushLocalChanges('notes')).rejects.toThrow()
+    await expect(sm['_pushLocalChanges']('notes')).rejects.toThrow()
   })
 
   it('_pushLocalChanges note_tags 用复合键 onConflict', async () => {
     sm.userId = 'user-1'
-    await db.note_tags.add({
-      note_id: 'n1', tag_id: 't1',
-      created_at: '2026-01-01T00:00:00.000Z', version: 1, sync_status: 'pending',
-    })
-    await sm._pushLocalChanges('note_tags')
-    const cloud = [...sb.state.tables.note_tags.values()][0]
-    expect(cloud.note_id).toBe('n1')
-    expect(cloud.tag_id).toBe('t1')
+    await db.note_tags.add(mkNoteTag())
+    await sm['_pushLocalChanges']('note_tags')
+    const cloud = [...sb.state.tables.note_tags!.values()][0]
+    expect(cloud?.note_id).toBe('n1')
+    expect(cloud?.tag_id).toBe('t1')
   })
 
   // ── pull + merge ─────────────────────────────────────────────────
@@ -106,62 +119,66 @@ describe('SyncManager', () => {
       created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-02-01T00:00:00.000Z',
       version: 3, last_sync_device: 'other',
     })
-    await sm._syncEntity('notes')
+    await sm['_syncEntity']('notes')
     const local = await db.notes.get('n-cloud')
     expect(local).toBeTruthy()
-    expect(local.sync_status).toBe('synced')
-    expect(local.version).toBe(3)
-    // 水印
+    expect(local?.sync_status).toBe('synced')
+    expect(local?.version).toBe(3)
     const meta = await db.sync_metadata.get('last_notes_sync_at')
-    expect(meta.value).toBe('2026-02-01T00:00:00.000Z')
+    expect(meta?.value).toBe('2026-02-01T00:00:00.000Z')
   })
 
   it('_syncEntity 云端 version 更高 → 覆盖本地', async () => {
     await db.notes.add(mkNote({ version: 1, sync_status: 'synced' }))
     sb._putRow('notes', {
-      ...mkNote(), version: 5,
-      updated_at: '2026-02-01T00:00:00.000Z', last_sync_device: 'other',
+      ...mkNote(),
+      version: 5,
+      updated_at: '2026-02-01T00:00:00.000Z',
+      last_sync_device: 'other',
     })
-    await sm._syncEntity('notes')
+    await sm['_syncEntity']('notes')
     const local = await db.notes.get('n1')
-    expect(local.version).toBe(5)
+    expect(local?.version).toBe(5)
   })
 
   it('_syncEntity 本地 version 更高 → 跳过（让 push 覆盖云端）', async () => {
     await db.notes.add(mkNote({ version: 10, sync_status: 'pending' }))
     sb._putRow('notes', {
-      ...mkNote(), version: 5, updated_at: '2026-02-01T00:00:00.000Z', last_sync_device: 'other',
+      ...mkNote(),
+      version: 5,
+      updated_at: '2026-02-01T00:00:00.000Z',
+      last_sync_device: 'other',
     })
-    await sm._syncEntity('notes')
+    await sm['_syncEntity']('notes')
     const local = await db.notes.get('n1')
-    expect(local.version).toBe(10)
+    expect(local?.version).toBe(10)
   })
 
   // ── conflict ─────────────────────────────────────────────────────
   it('_handleConflict 入库 + 触发 onConflict + 应用 LWW', async () => {
     const local = mkNote({ version: 1, updated_at: '2026-01-01T00:00:00.000Z' })
-    const cloud = { ...local, version: 2, updated_at: '2026-02-01T00:00:00.000Z', user_id: 'user-1' }
+    const cloud: Note = { ...local, version: 2, updated_at: '2026-02-01T00:00:00.000Z', user_id: 'user-1' }
     await db.notes.add(local)
-    let caught
+    let caught: ConflictEvent | undefined
     sm.onConflict = (info) => { caught = info }
-    await sm._handleConflict('notes', local, cloud)
+    await sm['_handleConflict']('notes', local, cloud)
     expect(caught).toBeTruthy()
-    expect(caught.winner).toBe(cloud)
+    expect(caught?.winner).toBe(cloud)
     const conflicts = await db.conflicts.toArray()
     expect(conflicts).toHaveLength(1)
-    expect(conflicts[0].entity_type).toBe('notes')
+    expect(conflicts[0]?.entity_type).toBe('notes')
     const localAfter = await db.notes.get('n1')
-    expect(localAfter.version).toBe(2) // cloud 胜出，覆盖
+    expect(localAfter?.version).toBe(2)
   })
 
   it('_handleConflict local 胜出 → 保留本地', async () => {
     const local = mkNote({ version: 5, updated_at: '2026-02-01T00:00:00.000Z' })
-    const cloud = { ...local, version: 1, updated_at: '2026-01-01T00:00:00.000Z', user_id: 'user-1' }
+    const cloud: Note = { ...local, version: 1, updated_at: '2026-01-01T00:00:00.000Z', user_id: 'user-1' }
     await db.notes.add(local)
     sm.onConflict = () => {}
-    await sm._handleConflict('notes', local, cloud)
+    await sm['_handleConflict']('notes', local, cloud)
     const after = await db.notes.get('n1')
-    expect(after.version).toBe(5) // 没动
+    expect(after?.version).toBe(5)
   })
 
   // ── realtime ─────────────────────────────────────────────────────
@@ -169,7 +186,7 @@ describe('SyncManager', () => {
     sm.userId = 'user-1'
     sm.setupRealtime()
     expect(sm.realtimeChannel).toBeTruthy()
-    expect(sb.state.realtimeHandlers).toHaveLength(3) // notes / tags / note_tags
+    expect(sb.state.realtimeHandlers).toHaveLength(3)
   })
 
   it('_handleRealtimeChange 跳过本设备事件', async () => {
@@ -178,30 +195,30 @@ describe('SyncManager', () => {
     await sm._handleRealtimeChange('notes', {
       eventType: 'UPDATE',
       new: { ...mkNote(), last_sync_device: DEVICE_ID },
-    })
-    // 没改动
+    } as unknown as Parameters<typeof SyncManager.prototype._handleRealtimeChange>[1])
     const local = await db.notes.get('n1')
-    expect(local.version).toBe(1)
+    expect(local?.version).toBe(1)
   })
 
   it('_handleRealtimeChange 接收远端更新', async () => {
     sm.userId = 'user-1'
     await db.notes.add(mkNote({ sync_status: 'synced' }))
-    let dispatched
+    let dispatched: Event | undefined
     const orig = window.dispatchEvent
-    window.dispatchEvent = (e) => { dispatched = e }
+    window.dispatchEvent = ((e: Event) => { dispatched = e }) as typeof window.dispatchEvent
     await sm._handleRealtimeChange('notes', {
       eventType: 'UPDATE',
       new: {
-        ...mkNote(), version: 5,
+        ...mkNote(),
+        version: 5,
         updated_at: '2026-02-01T00:00:00.000Z',
         last_sync_device: 'other',
       },
-    })
+    } as unknown as Parameters<typeof SyncManager.prototype._handleRealtimeChange>[1])
     window.dispatchEvent = orig
     const local = await db.notes.get('n1')
-    expect(local.version).toBe(5)
-    expect(dispatched.type).toBe('data-updated')
+    expect(local?.version).toBe(5)
+    expect(dispatched?.type).toBe('data-updated')
   })
 
   it('_handleRealtimeChange 本地 pending 时 DELETE 不覆盖', async () => {
@@ -210,9 +227,9 @@ describe('SyncManager', () => {
     await sm._handleRealtimeChange('notes', {
       eventType: 'DELETE',
       old: { id: 'n1' },
-    })
+    } as unknown as Parameters<typeof SyncManager.prototype._handleRealtimeChange>[1])
     const local = await db.notes.get('n1')
-    expect(local).toBeTruthy() // 没被删
+    expect(local).toBeTruthy()
   })
 
   // ── retry / backoff ─────────────────────────────────────────────
@@ -229,107 +246,72 @@ describe('SyncManager', () => {
     sm.scheduleRetry()
     expect(sm.retryDelay).toBe(32000)
     sm.scheduleRetry()
-    expect(sm.retryDelay).toBe(32000) // 封顶
+    expect(sm.retryDelay).toBe(32000)
   })
 
   it('fullSync 失败触发 scheduleRetry', async () => {
     sm.userId = 'user-1'
     sb._failNext('boom')
-    const states = []
+    const states: Array<{ status?: string }> = []
     sm.onSyncStateChange = (s) => states.push(s)
     await sm.fullSync()
     expect(states.find((s) => s.status === 'error')).toBeTruthy()
-    expect(sm._retryTimer).toBeTruthy()
+    expect(sm['_retryTimer']).toBeTruthy()
   })
 
   // ── 集成 ────────────────────────────────────────────────────────
   it('完整 push + pull 不丢数据', async () => {
-    // 本地 pending 一条
     await db.notes.add(mkNote({ content: 'local-only' }))
-    // 远端有一条新行
     sb._putRow('notes', {
       id: 'n-cloud', content: 'from cloud', status: 'pending',
       created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-02-01T00:00:00.000Z',
       version: 1, last_sync_device: 'other',
     })
     await sm.fullSync()
-    expect((await db.notes.get('n1')).sync_status).toBe('synced')
+    expect((await db.notes.get('n1'))?.sync_status).toBe('synced')
     expect((await db.notes.get('n-cloud'))).toBeTruthy()
   })
 
   // ── 跨设备硬删传播 ──────────────────────────────────────────
   it('跨设备硬删：云端没了的行本地也物理删', async () => {
-    // 本地有两条 synced 行
     await db.notes.add(mkNote({ id: 'a', sync_status: 'synced' }))
     await db.notes.add(mkNote({ id: 'b', sync_status: 'synced' }))
-    // 远端只有 a（A 端硬删了 b）
     sb._putRow('notes', { ...mkNote({ id: 'a' }), last_sync_device: 'other' })
     await sm.fullSync()
     expect(await db.notes.get('a')).toBeTruthy()
-    expect(await db.notes.get('b')).toBeUndefined() // b 没了
+    expect(await db.notes.get('b')).toBeUndefined()
   })
 
   it('cleanup 跳过 pending/failed 行（让 push 处理）', async () => {
-    // 本地有 pending 行（即将被推）
     await db.notes.add(mkNote({ id: 'pending-note', sync_status: 'pending' }))
-    // 远端没有（正常，B 没推过）
     await sm.fullSync()
-    // 行**没被 cleanup 删掉**——被 push 推上去了，所以 sync_status 变 'synced'
     expect(await db.notes.get('pending-note')).toBeTruthy()
-    expect((await db.notes.get('pending-note')).sync_status).toBe('synced')
+    expect((await db.notes.get('pending-note'))?.sync_status).toBe('synced')
   })
 
-  it('软删 notes：云端没也照样清（A 端硬删的 B 端 trash 副本要消失）', async () => {
-    // 本地 B 有 X 的软删副本（deleted_at 不为 null，trash 里）
+  it('软删 notes：云端没也照样清', async () => {
     await db.notes.add(mkNote({ id: 'trash', sync_status: 'synced', deleted_at: '2026-06-01T00:00:00.000Z' }))
-    // 远端没有（已被 A 硬删）
     await sm.fullSync()
-    // 软删的 trash 副本**也得清掉**——A 端硬删了，留着 B 端 trash 副本没意义
     expect(await db.notes.get('trash')).toBeUndefined()
   })
+
   it('cleanup 失败仅 warn，不阻塞 sync 其他步骤', async () => {
-    // 让 select('id') 抛错
-    sb.from = vi.fn((name) => ({
-      select: vi.fn().mockReturnValue({
-        // 不是 thenable 也不返回 error——直接 throw
-        // 但 fake 不支持，先模拟一个 error
-        // 简化：让 select() 失败走 wrap 报错
-      }),
-    }))
-    // 用更直接的方式：覆盖 supabase.from 让它在 select 路径上抛
-    sb.state.failNext = true
-    // 让数据库已有 synced 数据，sync 应该完成（不抛）
     await db.notes.add(mkNote({ id: 'x', sync_status: 'synced' }))
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    sb.state.failNext = true
     await expect(sm.fullSync()).resolves.toBe(false)
     spy.mockRestore()
-    // failNext 已被消费
     sb.state.failNext = false
   })
 
   it('note_tags cleanup 用 note_id 当唯一键（note_tags 没 id 列）', async () => {
-    // 本地有 1 个 note_tags link
-    await db.note_tags.add({
-      note_id: 'note-A',
-      tag_id: 'tag-X',
-      created_at: '2026-01-01T00:00:00.000Z',
-      version: 1,
-      sync_status: 'synced',
-    })
-    // 远端没有这个 note 的任何 link（A 端硬删了 note 连带 link）
+    await db.note_tags.add(mkNoteTag({ note_id: 'note-A', tag_id: 'tag-X', sync_status: 'synced' }))
     await sm.fullSync()
-    // 本地 link 被清掉
     expect(await db.note_tags.get(['note-A', 'tag-X'])).toBeUndefined()
   })
 
   it('note_tags cleanup note 还在云端：link 保留', async () => {
-    await db.note_tags.add({
-      note_id: 'note-A',
-      tag_id: 'tag-X',
-      created_at: '2026-01-01T00:00:00.000Z',
-      version: 1,
-      sync_status: 'synced',
-    })
+    await db.note_tags.add(mkNoteTag({ note_id: 'note-A', tag_id: 'tag-X', sync_status: 'synced' }))
     sb._putRow('note_tags', {
       note_id: 'note-A', tag_id: 'tag-X',
       user_id: 'u1', created_at: '2026-01-01T00:00:00.000Z',

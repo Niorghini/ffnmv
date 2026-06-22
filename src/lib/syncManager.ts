@@ -85,7 +85,8 @@ export class SyncManager {
   public onSyncStateChange: ((partial: SyncStateChange) => void) | null
   public onConflict: ((event: ConflictEvent) => void) | null
   private isSyncing = false
-  private realtimeChannel: ReturnType<SupabaseClient<Database>['channel']> | null = null
+  // public: 测试需要直接读写 realtimeChannel 来验证订阅状态
+  public realtimeChannel: ReturnType<SupabaseClient<Database>['channel']> | null = null
   private _pollTimer: ReturnType<typeof setTimeout> | null = null
   // 自适应轮询基线 60s,空闲 3 次后翻倍,上限 5min。Realtime 已覆盖实时场景,
   // 这里只是兜底,所以可以激进拉长以省电/省带宽。
@@ -93,11 +94,13 @@ export class SyncManager {
   private maxPollInterval = 300000
   private pollInterval = this.minPollInterval
   private consecutiveEmpty = 0
-  private retryDelay = 1000
+  // public: 测试需要直接读写 retryDelay 来验证退避序列
+  public retryDelay = 1000
   private maxRetryDelay = 32000
   private batchSize = 100
-  private userId: string | null = null
-  private _retryTimer: ReturnType<typeof setTimeout> | null = null
+  // public: 测试需要直接读写 userId 来注入状态（绕过 start() 流程）
+  public userId: string | null = null
+  public _retryTimer: ReturnType<typeof setTimeout> | null = null
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private _onOnline: (() => void) | null = null
   private _onOffline: (() => void) | null = null
@@ -381,7 +384,8 @@ export class SyncManager {
   }
 
   // ─── Realtime ───────────────────────────────────────────────────────
-  private setupRealtime(): void {
+  // public: 测试直接调用
+  setupRealtime(): void {
     if (this.realtimeChannel) return
     const ch = this.supabase
       .channel('ffn-changes')
@@ -408,7 +412,8 @@ export class SyncManager {
     this.realtimeChannel = ch
   }
 
-  private async _handleRealtimeChange(entity: EntityType, payload: RealtimePayload): Promise<void> {
+  // public: 测试直接调用
+  async _handleRealtimeChange(entity: EntityType, payload: RealtimePayload): Promise<void> {
     const { eventType, new: newRow, old: oldRow } = payload
     if (newRow?.last_sync_device === this.deviceId) return
 
@@ -551,7 +556,8 @@ export class SyncManager {
     if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility)
   }
 
-  private scheduleRetry(): void {
+  // public: 测试直接调用
+  scheduleRetry(): void {
     if (this._retryTimer) clearTimeout(this._retryTimer)
     this._retryTimer = setTimeout(() => {
       this._retryTimer = null

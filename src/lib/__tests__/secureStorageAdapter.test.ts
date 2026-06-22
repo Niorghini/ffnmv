@@ -1,10 +1,5 @@
 /**
  * secureStorageAdapter 直接测试
- * - 验证 secureStorageAdapter 把 SecureStoragePlugin 包成 supabase-js storage 接口
- *
- * 为什么没按 plan 写 useAuthStore.secure.test.js：
- * 那个测试依赖真实 supabase-js 客户端 + 完整网络 mock 才能走到 storage 写入，
- * 工程上太脆。直接测 adapter 等价（adapter 写对了，集成就是 supabase-js 的事）。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { secureStorageAdapter } from '@/lib/secureStorageAdapter'
@@ -44,8 +39,6 @@ describe('secureStorageAdapter', () => {
   })
 
   it('getItem 在 SecureStoragePlugin 抛错时返回 null（不传播）', async () => {
-    // 模拟底层插件异常（用不存在的 key 不会触发，但 remove 后再 get 仍 ok；这里只校验 catch 路径存在）
-    // 注：plan 的实现里 catch 默认 return null，所以空 _store + get('missing') 已经是 null，无需额外 mock
     const value = await secureStorageAdapter.getItem('any')
     expect(value).toBeNull()
   })

@@ -9,7 +9,7 @@ import 'fake-indexeddb/auto'
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach, beforeEach } from 'vitest'
 
-// mock capacitor-secure-storage-plugin：用 src/test/fakes/secureStorage.js 的内存 fake
+// mock capacitor-secure-storage-plugin：用 src/test/fakes/secureStorage.ts 的内存 fake
 vi.mock('capacitor-secure-storage-plugin', async () => {
   const { SecureStoragePlugin, __resetSecureStorageForTests } = await import('./fakes/secureStorage')
   return { SecureStoragePlugin, __resetSecureStorageForTests }
@@ -30,30 +30,28 @@ vi.mock('@capacitor/network', () => ({
 }))
 
 class MemoryStorage {
-  constructor() {
-    this._store = new Map()
-  }
-  get length() {
+  private _store = new Map<string, string>()
+  get length(): number {
     return this._store.size
   }
-  key(i) {
+  key(i: number): string | null {
     return [...this._store.keys()][i] ?? null
   }
-  getItem(k) {
-    return this._store.has(k) ? this._store.get(k) : null
+  getItem(k: string): string | null {
+    return this._store.has(k) ? this._store.get(k) ?? null : null
   }
-  setItem(k, v) {
+  setItem(k: string, v: string): void {
     this._store.set(String(k), String(v))
   }
-  removeItem(k) {
+  removeItem(k: string): void {
     this._store.delete(k)
   }
-  clear() {
+  clear(): void {
     this._store.clear()
   }
 }
 
-const installMemoryStorage = () => {
+const installMemoryStorage = (): void => {
   // 每次都强制装一个全新的 MemoryStorage，避免不同 beforeEach 看到不一致的实例
   try {
     Object.defineProperty(globalThis, 'localStorage', {
@@ -62,7 +60,7 @@ const installMemoryStorage = () => {
       configurable: true,
     })
   } catch {
-    globalThis.localStorage = new MemoryStorage()
+    ;(globalThis as unknown as { localStorage: MemoryStorage }).localStorage = new MemoryStorage()
   }
 }
 
@@ -77,7 +75,7 @@ afterEach(async () => {
     await Promise.all(
       dbs.map(
         (db) =>
-          new Promise((resolve) => {
+          new Promise<void>((resolve) => {
             if (!db.name) return resolve()
             const req = indexedDB.deleteDatabase(db.name)
             req.onsuccess = req.onerror = req.onblocked = () => resolve()

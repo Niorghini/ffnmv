@@ -1,15 +1,12 @@
 /**
  * Login 组件测试
- * - 错误内联显示
- * - signin/signup 模式切换
- * - 加载态禁用按钮
  */
+// 必须在 useAuthStore 引入前 stub supabase，避免连接真实后端
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAuthStore } from '@/stores/useAuthStore'
 
-// 必须在 useAuthStore 引入前 stub supabase，避免连接真实后端
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
@@ -43,8 +40,7 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: '注册' })).toBeInTheDocument()
   })
 
-  it('signIn 失败时显示错误', async () => {
-    const { signIn } = useAuthStore.getState()
+  it('signIn 失败时显示错误', () => {
     useAuthStore.setState({ error: 'Invalid login credentials' })
     render(<Login />)
     expect(screen.getByText('Invalid login credentials')).toBeInTheDocument()

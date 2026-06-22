@@ -1,12 +1,11 @@
 /**
  * UserMenu 组件测试
- * - 渲染：完整邮箱 + 同步三件套
- * - 交互：点击邮箱展开下拉（登出），点击外部收起
- * - 登出：点击登出触发 signOut
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import type { ReactElement } from 'react'
+import type { User } from '@supabase/supabase-js'
 
 vi.mock('@/stores/useAuthStore', () => ({
   useAuthStore: vi.fn(),
@@ -23,11 +22,11 @@ import { useSyncStore } from '@/stores/useSyncStore'
 import { signOutAndCleanup } from '@/lib/auth'
 import UserMenu from '@/components/UserMenu'
 
-const mockUser = { email: 'niorghini.test@gmail.com' }
+const mockUser = { email: 'niorghini.test@gmail.com' } as unknown as User
 
-const setupStores = ({ user = mockUser, sync = {} } = {}) => {
-  useAuthStore.mockImplementation(() => ({ user }))
-  useSyncStore.mockImplementation(() => ({
+const setupStores = ({ user = mockUser, sync = {} }: { user?: User | null; sync?: Record<string, unknown> } = {}): void => {
+  ;(useAuthStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({ user }))
+  ;(useSyncStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
     status: 'idle',
     pending: 0,
     online: true,
@@ -36,12 +35,12 @@ const setupStores = ({ user = mockUser, sync = {} } = {}) => {
   }))
 }
 
-const renderWithRouter = (ui, options) =>
-  render(<MemoryRouter>{ui}</MemoryRouter>, options)
+const renderWithRouter = (ui: ReactElement): ReturnType<typeof render> =>
+  render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('UserMenu', () => {
   beforeEach(() => {
-    signOutAndCleanup.mockClear()
+    ;(signOutAndCleanup as ReturnType<typeof vi.fn>).mockClear()
   })
 
   it('未登录时返回 null', () => {
@@ -61,7 +60,6 @@ describe('UserMenu', () => {
     renderWithRouter(<UserMenu onSync={() => {}} />)
     expect(screen.getByText('已同步')).toBeInTheDocument()
     expect(screen.getByLabelText('立即同步')).toBeInTheDocument()
-    // 同步时间存在（lastSyncAt + online + 非 syncing）
     expect(screen.getByText(/10:30/)).toBeInTheDocument()
   })
 
@@ -92,12 +90,9 @@ describe('UserMenu', () => {
       </div>,
     )
     const emailBtn = screen.getByRole('button', { name: /niorghini.test@gmail.com/ })
-    // 初始无 登出
     expect(screen.queryByText('登出')).not.toBeInTheDocument()
-    // 点击邮箱
     fireEvent.click(emailBtn)
     expect(await screen.findByText('登出')).toBeInTheDocument()
-    // 点击外部
     fireEvent.mouseDown(screen.getByTestId('outside'))
     await waitFor(() => {
       expect(screen.queryByText('登出')).not.toBeInTheDocument()

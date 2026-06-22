@@ -16,7 +16,7 @@ describe('parseTags', () => {
   })
   it('空字符串安全', () => {
     expect(parseTags('')).toEqual([])
-    expect(parseTags(null)).toEqual([])
+    expect(parseTags(null as unknown as string)).toEqual([])
   })
 })
 

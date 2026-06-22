@@ -36,7 +36,7 @@ describe('noteTagsRepo', () => {
     const detached = await noteTagsRepo.detach('n1', ['t1'])
     expect(detached).toEqual(['t1'])
     const row = await db.note_tags.get(['n1', 't1'])
-    expect(row.deleted_at).toBeTruthy()
+    expect(row?.deleted_at).toBeTruthy()
     const queue = await db.sync_queue.toArray()
     expect(queue.filter((q) => q.type === 'tag_detach')).toHaveLength(1)
   })

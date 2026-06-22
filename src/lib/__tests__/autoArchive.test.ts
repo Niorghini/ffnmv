@@ -1,9 +1,7 @@
 /**
  * autoArchive 测试
- * - 7 天 / 30 天 / 永不 三种策略
- * - 启动 + 调度
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { db, openDb } from '@/lib/db'
 import { notesRepo } from '@/repositories/notesRepo'
 import {
@@ -15,7 +13,7 @@ import {
 } from '@/lib/autoArchive'
 
 const NOW = new Date('2026-06-02T00:00:00.000Z').getTime()
-const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString()
+const daysAgo = (n: number): string => new Date(NOW - n * 86400000).toISOString()
 
 describe('autoArchive', () => {
   beforeEach(async () => {
@@ -30,7 +28,7 @@ describe('autoArchive', () => {
   })
 
   it('setArchiveAfterDays 拒绝非法值', async () => {
-    await expect(setArchiveAfterDays(15)).rejects.toThrow()
+    await expect(setArchiveAfterDays(15 as unknown as -1 | 7 | 30)).rejects.toThrow()
   })
 
   it('setArchiveAfterDays 接受 7 / 30 / -1', async () => {
@@ -44,7 +42,7 @@ describe('autoArchive', () => {
     await setArchiveAfterDays(-1)
     await notesRepo.create({ content: 'old completed' })
     const all = await db.notes.toArray()
-    await db.notes.update(all[0].id, {
+    await db.notes.update(all[0]!.id, {
       status: 'completed',
       updated_at: daysAgo(100),
     })
@@ -61,9 +59,9 @@ describe('autoArchive', () => {
     const count = await runArchive({ now: NOW })
     expect(count).toBe(1)
     const oldAfter = await db.notes.get(old.id)
-    expect(oldAfter.archived_at).toBeTruthy()
+    expect(oldAfter?.archived_at).toBeTruthy()
     const recentAfter = await db.notes.get(recent.id)
-    expect(recentAfter.archived_at).toBeNull()
+    expect(recentAfter?.archived_at).toBeNull()
   })
 
   it('7 天策略', async () => {
@@ -74,8 +72,8 @@ describe('autoArchive', () => {
     await db.notes.update(fresh.id, { status: 'completed', updated_at: daysAgo(2) })
     const count = await runArchive({ now: NOW })
     expect(count).toBe(1)
-    expect((await db.notes.get(old.id)).archived_at).toBeTruthy()
-    expect((await db.notes.get(fresh.id)).archived_at).toBeNull()
+    expect((await db.notes.get(old.id))?.archived_at).toBeTruthy()
+    expect((await db.notes.get(fresh.id))?.archived_at).toBeNull()
   })
 
   it('pending 笔记不归档', async () => {

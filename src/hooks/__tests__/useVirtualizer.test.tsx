@@ -1,7 +1,5 @@
 /**
  * useVirtualizer 测试
- * - 计算 visible 范围正确
- * - offsetY 正确
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, renderHook, act } from '@testing-library/react'
@@ -27,13 +25,12 @@ describe('useVirtualizer', () => {
     const { result } = renderHook(() =>
       useVirtualizer({ count: 100, rowHeight: 56, overscan: 2 }),
     )
-    // viewport 400, 400/56 ≈ 8, +overscan=2 → 0..10
     expect(result.current.visible.length).toBeGreaterThan(0)
     expect(result.current.visible[0]).toBe(0)
   })
 
   it('offsetY 随 scrollTop 推进', () => {
-    let api
+    let api: ReturnType<typeof useVirtualizer> | undefined
     function Wrapper() {
       api = useVirtualizer({ count: 100, rowHeight: 56, overscan: 5 })
       return (
@@ -45,12 +42,12 @@ describe('useVirtualizer', () => {
       )
     }
     render(<Wrapper />)
-    expect(api.offsetY).toBe(0)
+    expect(api?.offsetY).toBe(0)
     act(() => {
       const el = screen.getByTestId('scroll-container')
       el.scrollTop = 560
       el.dispatchEvent(new Event('scroll'))
     })
-    expect(api.offsetY).toBeGreaterThan(0)
+    expect(api?.offsetY).toBeGreaterThan(0)
   })
 })

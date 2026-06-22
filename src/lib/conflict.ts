@@ -29,6 +29,8 @@ export interface ConflictInput {
   last_sync_device?: string
   device_id?: string
   id?: string
+  // user_id 不参与 LWW 比较（pkOf 已剥离），但允许透传便于测试
+  user_id?: string
 }
 
 /**
