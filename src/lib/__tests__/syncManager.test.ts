@@ -56,7 +56,7 @@ describe('SyncManager', () => {
     setupFakeUser(sb)
     now = vi.fn(() => 1700000000000)
     sm = new SyncManager({
-      db: db as unknown as SyncManagerDeps['db'],
+      db: db,
       supabase: sb as unknown as SyncManagerDeps['supabase'],
       deviceId: DEVICE_ID,
       clock: now,
@@ -85,7 +85,7 @@ describe('SyncManager', () => {
     await db.notes.add(note)
     await sm['_pushLocalChanges']('notes')
 
-    const cloud = [...sb.state.tables.notes!.values()][0]
+    const cloud = [...sb.state.tables.notes.values()][0]
     expect(cloud).toBeTruthy()
     expect(cloud?.id).toBe(note.id)
     expect(cloud?.user_id).toBe('user-1')
@@ -93,7 +93,7 @@ describe('SyncManager', () => {
 
     const local = await db.notes.get(note.id)
     expect(local?.sync_status).toBe('synced')
-    expect(local?.last_synced_at).toBe(new Date(now()).toISOString())
+    expect(local?.last_synced_at).toBe(new Date(now() as number).toISOString())
   })
 
   it('_pushLocalChanges 失败抛错（上层重试）', async () => {
@@ -107,7 +107,7 @@ describe('SyncManager', () => {
     sm.userId = 'user-1'
     await db.note_tags.add(mkNoteTag())
     await sm['_pushLocalChanges']('note_tags')
-    const cloud = [...sb.state.tables.note_tags!.values()][0]
+    const cloud = [...sb.state.tables.note_tags.values()][0]
     expect(cloud?.note_id).toBe('n1')
     expect(cloud?.tag_id).toBe('t1')
   })

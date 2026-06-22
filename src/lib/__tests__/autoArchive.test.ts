@@ -28,7 +28,7 @@ describe('autoArchive', () => {
   })
 
   it('setArchiveAfterDays 拒绝非法值', async () => {
-    await expect(setArchiveAfterDays(15 as unknown as -1 | 7 | 30)).rejects.toThrow()
+    await expect(setArchiveAfterDays(15)).rejects.toThrow()
   })
 
   it('setArchiveAfterDays 接受 7 / 30 / -1', async () => {
@@ -42,7 +42,7 @@ describe('autoArchive', () => {
     await setArchiveAfterDays(-1)
     await notesRepo.create({ content: 'old completed' })
     const all = await db.notes.toArray()
-    await db.notes.update(all[0]!.id, {
+    await db.notes.update(all[0].id, {
       status: 'completed',
       updated_at: daysAgo(100),
     })

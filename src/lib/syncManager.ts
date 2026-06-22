@@ -214,7 +214,7 @@ export class SyncManager {
           const localRow = stripUserId(cloudRowRaw) as unknown as SyncEntity
           localRows.push(localRow)
           const pk = pkOf(entity, localRow)
-          const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
+          const existing = (await this.db[entity].get(pk as never))
           if (!existing) {
             await this.db[entity].put({
               ...(localRow as unknown as Record<string, unknown>),
@@ -336,7 +336,7 @@ export class SyncManager {
     await this.db.transaction('rw', table, async () => {
       for (const row of pending) {
         const pk = pkOf(entity, row)
-        const existing = (await table.get(pk as never)) as SyncEntity | undefined
+        const existing = (await table.get(pk as never))
         if (existing) {
           await table.put({
             ...(existing as unknown as Record<string, unknown>),
@@ -422,7 +422,7 @@ export class SyncManager {
     await this.db.transaction('rw', this.db[entity], async () => {
       if (eventType === 'DELETE') {
         const pk = pkOf(entity, oldRow as unknown as SyncEntity)
-        const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
+        const existing = (await this.db[entity].get(pk as never))
         if (existing && existing.sync_status === 'pending') return
         await this.db[entity].delete(pk as never)
         const pkStr = Array.isArray(pk) ? pk.join(':') : pk
@@ -430,7 +430,7 @@ export class SyncManager {
       } else {
         const localRow = stripUserId(newRow) as unknown as SyncEntity
         const pk = pkOf(entity, localRow)
-        const existing = (await this.db[entity].get(pk as never)) as SyncEntity | undefined
+        const existing = (await this.db[entity].get(pk as never))
         if (!existing) {
           await this.db[entity].put({
             ...(localRow as unknown as Record<string, unknown>),
@@ -516,7 +516,7 @@ export class SyncManager {
       this.retryDelay = 1000
       this.batchSize = 100
       useSyncStore.getState().setOnline(true)
-      this.fullSync()
+      void this.fullSync()
     }
     this._onOffline = () => {
       this.batchSize = 20
@@ -524,21 +524,21 @@ export class SyncManager {
       useSyncStore.getState().setOnline(false)
     }
     this._onVisibility = () => {
-      if (document.visibilityState === 'visible') this.fullSync()
+      if (document.visibilityState === 'visible') void this.fullSync()
     }
     this._onDataUpdated = () => {
       // 1s debounce：合并密集写入
       if (this._immediateSyncTimer) clearTimeout(this._immediateSyncTimer)
       this._immediateSyncTimer = setTimeout(() => {
         this._immediateSyncTimer = null
-        if (!this.isSyncing) this.fullSync()
+        if (!this.isSyncing) void this.fullSync()
       }, 1000)
     }
     // 本地 DB 被 db.js self-heal 清空重建后,立即全量重拉补回数据。
     // 否则用户得等下一次 polling(60s+)才看到笔记回来,期间 UI 是空的。
     this._onDbReset = () => {
       console.info('[sync] db-reset detected, immediate full sync to recover local data')
-      this.fullSync()
+      void this.fullSync()
     }
     window.addEventListener('online', this._onOnline)
     window.addEventListener('offline', this._onOffline)
@@ -561,7 +561,7 @@ export class SyncManager {
     if (this._retryTimer) clearTimeout(this._retryTimer)
     this._retryTimer = setTimeout(() => {
       this._retryTimer = null
-      this.fullSync()
+      void this.fullSync()
     }, this.retryDelay)
     this.retryDelay = Math.min(this.retryDelay * 2, this.maxRetryDelay)
   }

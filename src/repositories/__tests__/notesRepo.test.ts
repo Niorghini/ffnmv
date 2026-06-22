@@ -101,7 +101,7 @@ describe('notesRepo', () => {
   })
 
   it('getAll includeDeleted 看到全部', async () => {
-    const _a = await notesRepo.create({ content: 'a' })
+    await notesRepo.create({ content: 'a' })
     const b = await notesRepo.create({ content: 'b' })
     await notesRepo.softDelete(b.id)
     const all = await notesRepo.getAll({ includeDeleted: true })
@@ -164,7 +164,7 @@ describe('notesRepo', () => {
       if (name === 'note_tags') return { delete: linkDelete }
       if (name === 'notes') return { delete: noteDelete }
       return { delete: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ error: null }) }) }
-    }) as unknown as typeof supabase.from
+    })
     ;(supabase.auth as unknown as { getUser: () => Promise<{ data: { user: { id: string } | null } }> }).getUser = vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } })
 
     const note = await notesRepo.create({ content: 'x' })
@@ -261,14 +261,14 @@ describe('notesRepo', () => {
   })
 
   it('cleanOrphanNoteTags 无 orphan 返回 0', async () => {
-    const _note = await notesRepo.create({ content: 'x', tagIds: ['t1'] })
+    await notesRepo.create({ content: 'x', tagIds: ['t1'] })
     const count = await notesRepo.cleanOrphanNoteTags()
     expect(count).toBe(0)
   })
 
   it('getStats 返回准确的 active/deleted/total 计数', async () => {
-    const _a = await notesRepo.create({ content: 'a' })
-    const _b = await notesRepo.create({ content: 'b' })
+    await notesRepo.create({ content: 'a' })
+    await notesRepo.create({ content: 'b' })
     const c = await notesRepo.create({ content: 'c' })
     await notesRepo.softDelete(c.id)
     const s = await notesRepo.getStats()

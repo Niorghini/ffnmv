@@ -241,7 +241,7 @@ export const createFakeSupabase = (overrides: FakeSupabaseOverrides = {}): FakeS
     },
     from(name: string) {
       if (!state.tables[name]) state.tables[name] = new Map()
-      return table(name) as unknown as ReturnType<FakeSupabase['from']>
+      return table(name)
     },
     removeChannel(ch) {
       state.realtimeHandlers = state.realtimeHandlers.filter((h) => h.channel !== ch?.topic)
@@ -259,7 +259,7 @@ export const createFakeSupabase = (overrides: FakeSupabaseOverrides = {}): FakeS
           return this
         },
         unsubscribe() { /* noop */ },
-        _trigger(event, payload) {
+        _trigger(_event, payload) {
           for (const h of handlers) h(payload)
         },
       }

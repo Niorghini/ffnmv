@@ -1,4 +1,3 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, HashRouter } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -29,7 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 if (Capacitor.isNativePlatform()) {
   // Android 物理返回键：优先 history.back()，不能回退就退出 App
   void CapApp.addListener('backButton', ({ canGoBack }) => {
-    if (!canGoBack) CapApp.exitApp()
+    if (!canGoBack) void CapApp.exitApp()
     else window.history.back()
   })
   // 沉浸式状态栏：CSS 里 body { padding-top: var(--safe-top) } 留出刘海位置

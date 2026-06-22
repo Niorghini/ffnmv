@@ -24,7 +24,7 @@ const PRIORITY: Record<SyncOpType, 1 | 3 | 5 | 8> = {
 }
 
 const enqueue = (type: SyncOpType, entityId: string): void => {
-  db.sync_queue.add({
+  void db.sync_queue.add({
     type,
     entity_type: 'notes',
     entity_id: entityId,
@@ -90,7 +90,7 @@ export const notesRepo = {
    */
   async update(id: string, { content }: UpdateNoteInput): Promise<Note> {
     const ts = nowIso()
-    let updated: Note
+    let updated!: Note
     // 先在事务外 findOrCreate（不要求在事务内，但 link 写入需要在事务里）
     const desiredNames = [...new Set(extractTagNames(content))]
     const desiredTags = await tagsRepo.findOrCreate(desiredNames)
@@ -171,7 +171,7 @@ export const notesRepo = {
       throw new Error(`Invalid status: ${status}`)
     }
     const ts = nowIso()
-    let updated: Note
+    let updated!: Note
     await db.transaction('rw', db.notes, db.sync_queue, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -199,7 +199,7 @@ export const notesRepo = {
    */
   async softDelete(id: string): Promise<Note> {
     const ts = nowIso()
-    let updated: Note
+    let updated!: Note
     await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -247,7 +247,7 @@ export const notesRepo = {
    */
   async restore(id: string): Promise<Note> {
     const ts = nowIso()
-    let updated: Note
+    let updated!: Note
     await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)
@@ -382,7 +382,7 @@ export const notesRepo = {
    */
   async setArchived(id: string, archived: boolean): Promise<Note> {
     const ts = nowIso()
-    let updated: Note
+    let updated!: Note
     await db.transaction('rw', db.notes, db.sync_queue, async () => {
       const existing = await db.notes.get(id)
       if (!existing) throw new Error(`Note ${id} not found`)

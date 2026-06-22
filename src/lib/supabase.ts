@@ -42,8 +42,8 @@ export const isSupabaseConfigured = (): boolean => Boolean(url && anonKey)
 
 if (isNative) {
   // 切网（WiFi↔4G）后自动重连 Realtime
-  Network.addListener('networkStatusChange', (status) => {
-    if (status.connected) supabase.realtime.connect()
-    else supabase.realtime.disconnect()
+  void Network.addListener('networkStatusChange', (status) => {
+    if (status.connected) void supabase.realtime.connect()
+    else void supabase.realtime.disconnect()
   })
 }

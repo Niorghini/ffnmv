@@ -5,7 +5,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { db, openDb } from '@/lib/db'
 import { tagsRepo } from '@/repositories/tagsRepo'
 import { notesRepo } from '@/repositories/notesRepo'
-import type { SyncQueueItem } from '@/types'
 
 describe('tagsRepo', () => {
   beforeEach(async () => {
@@ -103,8 +102,8 @@ describe('tagsRepo', () => {
   it('countsByTag 只数未删', async () => {
     const [t1] = await tagsRepo.findOrCreate(['t1'])
     const [t2] = await tagsRepo.findOrCreate(['t2'])
-    const _n1 = await notesRepo.create({ content: 'a', tagIds: [t1.id] })
-    const _n2 = await notesRepo.create({ content: 'b', tagIds: [t1.id, t2.id] })
+    await notesRepo.create({ content: 'a', tagIds: [t1.id] })
+    await notesRepo.create({ content: 'b', tagIds: [t1.id, t2.id] })
     const n3 = await notesRepo.create({ content: 'c', tagIds: [t1.id] })
     await notesRepo.softDelete(n3.id) // 不应计入 t1
     const counts = await tagsRepo.countsByTag()
@@ -115,7 +114,7 @@ describe('tagsRepo', () => {
   it('findUnused 返回没有活跃 note_tags 链接的 tag', async () => {
     const [used] = await tagsRepo.findOrCreate(['used'])
     const [unused] = await tagsRepo.findOrCreate(['unused'])
-    const _n = await notesRepo.create({ content: 'x', tagIds: [used.id] })
+    await notesRepo.create({ content: 'x', tagIds: [used.id] })
     const unusedList = await tagsRepo.findUnused()
     const ids = unusedList.map((t) => t.id)
     expect(ids).toContain(unused.id)
@@ -126,7 +125,7 @@ describe('tagsRepo', () => {
     const [t] = await tagsRepo.findOrCreate(['once'])
     const n = await notesRepo.create({ content: 'x', tagIds: [t.id] })
     const links = await db.note_tags.where({ note_id: n.id, tag_id: t.id }).toArray()
-    await db.note_tags.put({ ...links[0]!, deleted_at: '2026-01-01T00:00:00.000Z' })
+    await db.note_tags.put({ ...links[0], deleted_at: '2026-01-01T00:00:00.000Z' })
     const unusedList = await tagsRepo.findUnused()
     expect(unusedList.map((x) => x.id)).toContain(t.id)
   })
@@ -154,7 +153,7 @@ describe('tagsRepo', () => {
       priority: 5,
       status: 'pending',
       created_at: '2026-01-01T00:00:00.000Z',
-    } as SyncQueueItem)
+    })
     expect(await db.tags.get(t.id)).toBeTruthy()
     await tagsRepo.hardDelete(t.id)
     expect(await db.tags.get(t.id)).toBeUndefined()

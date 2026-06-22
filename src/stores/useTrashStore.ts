@@ -25,7 +25,7 @@ const scheduleReload = (load: () => Promise<void>): void => {
   if (_reloadTimer) return
   _reloadTimer = setTimeout(() => {
     _reloadTimer = null
-    load()
+    void load()
   }, 50)
 }
 
@@ -68,7 +68,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('data-updated', (event) => {
     const detail = (event as CustomEvent<DataUpdatedDetail>).detail || ({} as DataUpdatedDetail)
     const ok = applyIncremental(
-      useTrashStore.setState as unknown as (fn: (s: TrashState) => Partial<TrashState>) => void,
+      useTrashStore.setState,
       useTrashStore.getState,
       detail,
     )

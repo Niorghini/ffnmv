@@ -13,9 +13,14 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "checkJs": false,
+    "strict": true,
     "noImplicitAny": true,
-    "strictNullChecks": false,
-    "strict": false,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

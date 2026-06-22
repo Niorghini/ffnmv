@@ -103,7 +103,7 @@ const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
     }
   }
 
-  const handleCancel = (n: Note, originalContent: string, currentContent: string) => {
+  const handleCancel = (_n: Note, originalContent: string, currentContent: string) => {
     if (currentContent !== originalContent) {
       if (!confirm('有未保存的修改，确定取消？')) return
     }
@@ -358,7 +358,7 @@ const renderContentWithTags = (
     if (match.index > lastIndex) {
       parts.push(<span key={`t-${lastIndex}`}>{content.slice(lastIndex, match.index)}</span>)
     }
-    const name = match[1] as string
+    const name = match[1]
     const tag = tagByName.get(name)
     parts.push(
       <button

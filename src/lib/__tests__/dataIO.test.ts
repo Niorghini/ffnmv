@@ -91,8 +91,8 @@ describe('dataIO', () => {
   describe('validateImport', () => {
     it('拒绝非对象', () => {
       expect(validateImport(null).ok).toBe(false)
-      expect(validateImport('x' as unknown as object).ok).toBe(false)
-      expect(validateImport([] as unknown as object).ok).toBe(false)
+      expect(validateImport('x').ok).toBe(false)
+      expect(validateImport([] as unknown).ok).toBe(false)
     })
     it('拒绝错版本', () => {
       expect(validateImport({ version: 99, notes: [], tags: [], noteTags: [] }).ok).toBe(false)

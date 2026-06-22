@@ -120,7 +120,7 @@ export const importData = async (raw: unknown): Promise<ImportResult> => {
 
   // 统计：插入 vs 更新
   const countDiff = async <K>(
-    table: { bulkGet(keys: K[]): Promise<(unknown | undefined)[]> },
+    table: { bulkGet(keys: K[]): Promise<Array<unknown>> },
     items: unknown[],
     keyFn: (x: unknown) => K,
   ): Promise<ImportStats> => {
@@ -143,9 +143,9 @@ export const importData = async (raw: unknown): Promise<ImportResult> => {
   ])
 
   await db.transaction('rw', db.notes, db.tags, db.note_tags, async () => {
-    if (notesIn.length) await db.notes.bulkPut(notesIn as never[])
-    if (tagsIn.length) await db.tags.bulkPut(tagsIn as never[])
-    if (noteTagsIn.length) await db.note_tags.bulkPut(noteTagsIn as never[])
+    if (notesIn.length) await db.notes.bulkPut(notesIn)
+    if (tagsIn.length) await db.tags.bulkPut(tagsIn)
+    if (noteTagsIn.length) await db.note_tags.bulkPut(noteTagsIn)
   })
 
   return {

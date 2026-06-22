@@ -61,10 +61,10 @@ function App(): ReactElement {
         console.error('DB open failed:', err)
         setDbReady(true)
       })
-    init()
+    void init()
     // 原生平台：navigator.onLine 不可靠，用 @capacitor/network 重读一次
     if (Capacitor.isNativePlatform()) {
-      Network.getStatus().then((status) => {
+      void Network.getStatus().then((status) => {
         useSyncStore.getState().setOnline(status.connected)
       })
     }

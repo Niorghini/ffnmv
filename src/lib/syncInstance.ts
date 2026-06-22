@@ -5,7 +5,7 @@
  */
 import { createSyncManager, type SyncManager } from './syncManager'
 import { supabase } from './supabase'
-import { db, type FfnDb } from './db'
+import { db } from './db'
 import { getDeviceId } from './device'
 import { useSyncStore } from '@/stores/useSyncStore'
 import { useConflictsStore } from '@/stores/useConflictsStore'
@@ -22,14 +22,14 @@ const bindStoreUpdates = (sm: SyncManager): void => {
     }
   }
   sm.onConflict = () => {
-    useConflictsStore.getState().load()
+    void useConflictsStore.getState().load()
   }
 }
 
 export const getSyncManager = (): SyncManager => {
   if (instance) return instance
   instance = createSyncManager({
-    db: db as FfnDb,
+    db: db,
     supabase,
     deviceId: getDeviceId(),
   })
@@ -44,8 +44,8 @@ export const startSync = async (): Promise<boolean> => {
   if (ok) {
     started = true
     // 启动后刷一次待同步计数
-    useSyncStore.getState().refreshPending()
-    useConflictsStore.getState().load()
+    void useSyncStore.getState().refreshPending()
+    void useConflictsStore.getState().load()
   }
   return ok
 }

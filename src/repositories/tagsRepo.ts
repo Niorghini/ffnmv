@@ -95,7 +95,7 @@ export const tagsRepo = {
 
   async updateName(id: string, newName: string): Promise<Tag> {
     const ts = nowIso()
-    let updated: Tag
+    let updated!: Tag
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)
@@ -120,7 +120,7 @@ export const tagsRepo = {
 
   async setColor(id: string, color: string): Promise<Tag> {
     const ts = nowIso()
-    let updated: Tag
+    let updated!: Tag
     await db.transaction('rw', db.tags, db.sync_queue, async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)
@@ -144,7 +144,7 @@ export const tagsRepo = {
 
   async softDelete(id: string): Promise<Tag> {
     const ts = nowIso()
-    let updated: Tag
+    let updated!: Tag
     await db.transaction('rw', [db.tags, db.note_tags, db.sync_queue], async () => {
       const existing = await db.tags.get(id)
       if (!existing) throw new Error(`Tag ${id} not found`)

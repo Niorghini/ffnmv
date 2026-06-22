@@ -83,7 +83,7 @@ const ConflictDialog = ({ onClose }: ConflictDialogProps) => {
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
           <div className="text-xs text-gray-400">
             LWW 推荐：
-            {pickWinner(conflict.local_data as Note | Tag | NoteTag, conflict.cloud_data as Note | Tag | NoteTag) === conflict.cloud_data ? '云端' : '本地'}
+            {pickWinner(conflict.local_data, conflict.cloud_data) === conflict.cloud_data ? '云端' : '本地'}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -121,19 +121,19 @@ const ConflictDialog = ({ onClose }: ConflictDialogProps) => {
 
 const resolve = async (conflict: ConflictRecord, choice: 'local' | 'cloud' | 'merge') => {
   const { entity_type, entity_id: _entity_id, local_data, cloud_data } = conflict
-  const winner = pickWinner(local_data as Note | Tag | NoteTag, cloud_data as Note | Tag | NoteTag)
+  const winner = pickWinner(local_data, cloud_data)
   // 自动：若用户选 LWW 胜出版本，写回本地并标记 sync_status=pending 让 push 覆盖云端
   // 若用户选另一边：写回对应版本
   let chosen: Note | Tag | NoteTag
-  if (choice === 'local') chosen = local_data as Note | Tag | NoteTag
-  else if (choice === 'cloud') chosen = cloud_data as Note | Tag | NoteTag
+  if (choice === 'local') chosen = local_data
+  else if (choice === 'cloud') chosen = cloud_data
   else chosen = winner // LWW 胜出
 
   const finalRow: Note | Tag | NoteTag = {
     ...chosen,
     sync_status: 'pending',
     last_synced_at: null,
-  } as Note | Tag | NoteTag
+  }
   if (entity_type === 'notes') {
     await notesRepo._putDirect(finalRow as Note)
   } else if (entity_type === 'tags') {

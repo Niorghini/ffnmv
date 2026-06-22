@@ -35,7 +35,7 @@ const scheduleReload = (load: () => Promise<void>): void => {
   if (_reloadTimer) return
   _reloadTimer = setTimeout(() => {
     _reloadTimer = null
-    load()
+    void load()
   }, 50)
 }
 
@@ -94,7 +94,7 @@ if (typeof window !== 'undefined') {
     const detail = (event as CustomEvent<DataUpdatedDetail>).detail || ({} as DataUpdatedDetail)
     // 试增量;不行就 fallback 全量
     const ok = applyIncremental(
-      useNotesStore.setState as unknown as (fn: (s: NotesState) => Partial<NotesState>) => void,
+      useNotesStore.setState,
       useNotesStore.getState,
       detail,
     )

@@ -24,7 +24,7 @@ const scheduleReload = (load: () => Promise<void>): void => {
   if (_reloadTimer) return
   _reloadTimer = setTimeout(() => {
     _reloadTimer = null
-    load()
+    void load()
   }, 50)
 }
 
@@ -59,7 +59,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('data-updated', (event) => {
     const detail = (event as CustomEvent<DataUpdatedDetail>).detail || ({} as DataUpdatedDetail)
     const ok = applyIncremental(
-      useTagsStore.setState as unknown as (fn: (s: TagsState) => Partial<TagsState>) => void,
+      useTagsStore.setState,
       useTagsStore.getState,
       detail,
     )
