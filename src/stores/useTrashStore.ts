@@ -7,9 +7,21 @@
  */
 import { create } from 'zustand'
 import { notesRepo } from '@/repositories/notesRepo'
+import type { Note, DataUpdatedDetail } from '@/types'
 
-let _reloadTimer = null
-const scheduleReload = (load) => {
+interface TrashState {
+  notes: Note[]
+  loaded: boolean
+}
+
+interface TrashActions {
+  load: () => Promise<void>
+}
+
+type TrashStore = TrashState & TrashActions
+
+let _reloadTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleReload = (load: () => Promise<void>): void => {
   if (_reloadTimer) return
   _reloadTimer = setTimeout(() => {
     _reloadTimer = null
@@ -17,13 +29,23 @@ const scheduleReload = (load) => {
   }, 50)
 }
 
-const sortTrash = (notes) =>
-  [...notes].sort((a, b) => new Date(b.deleted_at) - new Date(a.deleted_at))
+const sortTrash = (notes: Note[]): Note[] =>
+  [...notes].sort((a, b) =>
+    new Date(b.deleted_at ?? 0).getTime() - new Date(a.deleted_at ?? 0).getTime(),
+  )
 
-const applyIncremental = (set, get, detail) => {
-  const { entityType, rows, removed } = detail
+const applyIncremental = (
+  set: (fn: (s: TrashState) => Partial<TrashState>) => void,
+  _get: () => TrashStore,
+  detail: DataUpdatedDetail,
+): boolean => {
+  const entityType = detail.entityType
+  const rows = detail.rows as Note[] | undefined
+  const removed = detail.removed
   if (entityType !== 'notes') return false
-  if (!rows?.length && !removed?.length) return false
+  const hasRows = (rows?.length ?? 0) > 0
+  const removedSize = removed instanceof Set ? removed.size : (removed?.length ?? 0)
+  if (!hasRows && removedSize === 0) return false
 
   set((s) => {
     const byId = new Map(s.notes.map((n) => [n.id, n]))
@@ -44,13 +66,17 @@ const applyIncremental = (set, get, detail) => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('data-updated', (event) => {
-    const detail = event.detail || {}
-    const ok = applyIncremental(useTrashStore.setState, useTrashStore.getState, detail)
+    const detail = (event as CustomEvent<DataUpdatedDetail>).detail || ({} as DataUpdatedDetail)
+    const ok = applyIncremental(
+      useTrashStore.setState as unknown as (fn: (s: TrashState) => Partial<TrashState>) => void,
+      useTrashStore.getState,
+      detail,
+    )
     if (!ok) scheduleReload(useTrashStore.getState().load)
   })
 }
 
-export const useTrashStore = create((set) => ({
+export const useTrashStore = create<TrashStore>()((set) => ({
   notes: [],
   loaded: false,
 

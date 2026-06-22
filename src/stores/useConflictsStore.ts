@@ -5,8 +5,22 @@
  */
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import type { ConflictRecord } from '@/types'
 
-export const useConflictsStore = create((set) => ({
+interface ConflictsState {
+  conflicts: ConflictRecord[]
+  unread: number
+}
+
+interface ConflictsActions {
+  load: () => Promise<void>
+  clear: () => Promise<void>
+  markRead: () => void
+}
+
+type ConflictsStore = ConflictsState & ConflictsActions
+
+export const useConflictsStore = create<ConflictsStore>()((set) => ({
   conflicts: [],
   unread: 0,
 

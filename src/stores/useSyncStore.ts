@@ -7,8 +7,27 @@
  */
 import { create } from 'zustand'
 import { db } from '@/lib/db'
+import type { SyncEngineStatus, EntityType } from '@/types'
 
-export const useSyncStore = create((set, get) => ({
+interface SyncState {
+  status: SyncEngineStatus
+  lastSyncAt: number | null
+  error: string | null
+  pending: number
+  online: boolean
+  lastSyncTimes: number[]
+}
+
+interface SyncActions {
+  setPartial: (partial: Partial<SyncState>) => void
+  recordSyncTime: (ts: number) => void
+  setOnline: (online: boolean) => void
+  refreshPending: () => Promise<void>
+}
+
+type SyncStore = SyncState & SyncActions
+
+export const useSyncStore = create<SyncStore>()((set, get) => ({
   status: 'idle',
   lastSyncAt: null,
   error: null,
@@ -16,14 +35,14 @@ export const useSyncStore = create((set, get) => ({
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
   lastSyncTimes: [],
 
-  setPartial: (partial) => set(partial),
+  setPartial: (partial: Partial<SyncState>) => set(partial),
 
-  recordSyncTime: (ts) =>
+  recordSyncTime: (ts: number) =>
     set((state) => ({
       lastSyncTimes: [ts, ...state.lastSyncTimes.filter((t) => t !== ts)].slice(0, 10),
     })),
 
-  setOnline: (online) => {
+  setOnline: (online: boolean) => {
     set({ online })
     if (online && get().status === 'offline') set({ status: 'idle' })
   },
@@ -35,3 +54,6 @@ export const useSyncStore = create((set, get) => ({
     set({ pending: notes + tags + links })
   },
 }))
+
+// 抑制 unused 警告：EntityType 在 SyncEngineStatus 关联类型中已使用
+void (null as EntityType | null)

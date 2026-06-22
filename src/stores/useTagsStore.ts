@@ -5,9 +5,22 @@
  */
 import { create } from 'zustand'
 import { tagsRepo } from '@/repositories/tagsRepo'
+import type { Tag, DataUpdatedDetail } from '@/types'
 
-let _reloadTimer = null
-const scheduleReload = (load) => {
+interface TagsState {
+  tags: Tag[]
+  counts: Map<string, number>
+  loaded: boolean
+}
+
+interface TagsActions {
+  load: () => Promise<void>
+}
+
+type TagsStore = TagsState & TagsActions
+
+let _reloadTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleReload = (load: () => Promise<void>): void => {
   if (_reloadTimer) return
   _reloadTimer = setTimeout(() => {
     _reloadTimer = null
@@ -15,10 +28,18 @@ const scheduleReload = (load) => {
   }, 50)
 }
 
-const applyIncremental = (set, get, detail) => {
-  const { entityType, rows, removed } = detail
+const applyIncremental = (
+  set: (fn: (s: TagsState) => Partial<TagsState>) => void,
+  _get: () => TagsStore,
+  detail: DataUpdatedDetail,
+): boolean => {
+  const entityType = detail.entityType
+  const rows = detail.rows as Tag[] | undefined
+  const removed = detail.removed
   if (entityType !== 'tags') return false
-  if (!rows?.length && !removed?.length) return false
+  const hasRows = (rows?.length ?? 0) > 0
+  const removedSize = removed instanceof Set ? removed.size : (removed?.length ?? 0)
+  if (!hasRows && removedSize === 0) return false
   set((s) => {
     const byId = new Map(s.tags.map((t) => [t.id, t]))
     if (rows) {
@@ -36,13 +57,17 @@ const applyIncremental = (set, get, detail) => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('data-updated', (event) => {
-    const detail = event.detail || {}
-    const ok = applyIncremental(useTagsStore.setState, useTagsStore.getState, detail)
+    const detail = (event as CustomEvent<DataUpdatedDetail>).detail || ({} as DataUpdatedDetail)
+    const ok = applyIncremental(
+      useTagsStore.setState as unknown as (fn: (s: TagsState) => Partial<TagsState>) => void,
+      useTagsStore.getState,
+      detail,
+    )
     if (!ok) scheduleReload(useTagsStore.getState().load)
   })
 }
 
-export const useTagsStore = create((set, get) => ({
+export const useTagsStore = create<TagsStore>()((set) => ({
   tags: [],
   counts: new Map(),
   loaded: false,
