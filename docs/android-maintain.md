@@ -136,6 +136,9 @@ npm run build:android
 # web 构建 + cap sync，mode=test（连 ffn-test.aicyber.chat）
 npm run build:android:test
 
+# web 构建 + cap sync，mode=canary（连 ffn-pre.aicyber.chat）
+npm run build:android:canary
+
 # 出 debug APK（开发时本地用）
 npm run android:apk
 
@@ -159,7 +162,7 @@ npx cap run android
 - `npm run lint`
 - `npm run test`
 - `npm run build`
-- `npm run build:android:test` + 检查 `android/app/src/main/assets/` 是否与 dist/ 一致
+- `npm run build:android:canary` + 检查 `android/app/src/main/assets/` 是否与 dist/ 一致
 
 PR 不通过 CI 不能 merge。
 

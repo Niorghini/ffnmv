@@ -33,15 +33,15 @@ jobs:
       - name: Build (web)
         run: npm run build
 
-      - name: Build (android:test) + cap sync
-        run: npm run build:android:test
+      - name: Build (android:canary) + cap sync
+        run: npm run build:android:canary
 
       - name: Verify cap sync result is committed
         # cap sync 修改了 android/app/src/main/assets/，但只应在本地生效。
         # 如果 push 后这里仍有 diff，说明开发者忘 commit sync 结果 → CI 拦截。
         run: |
           if ! git diff --exit-code -- android/app/src/main/assets/ > /dev/null; then
-            echo "::error::android/ assets out of sync with dist/. Run 'npm run build:android:test' locally and commit the result."
+            echo "::error::android/ assets out of sync with dist/. Run 'npm run build:android:canary' locally and commit the result."
             git diff -- android/app/src/main/assets/ | head -30
             exit 1
           fi

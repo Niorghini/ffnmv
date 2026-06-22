@@ -270,6 +270,10 @@ npm run android:bundle
 npm run build:android:test && npm run android:apk:release
 # 然后手机装这个 APK，登录后同步会打到 test 后端
 
+# 出 canary 模式 APK（连 ffn-pre.aicyber.chat 后端，dev-* 分支用）
+npm run build:android:canary && npm run android:apk:release
+# 然后手机装这个 APK，登录后同步会打到 pre 后端
+
 # 清理 build 产物
 cd android && ./gradlew clean
 ```
