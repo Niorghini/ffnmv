@@ -310,7 +310,7 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName: _tagByName }: NoteRo
           return (
             <span
               key={t}
-              className="text-xs px-2 py-0 leading-none rounded-full font-medium bg-tag-bg text-tag"
+              className="text-xs px-2 py-0.5 rounded-full font-medium bg-tag-bg text-tag"
             >
               #{t}
             </span>
@@ -367,7 +367,7 @@ const renderContentWithTags = (
           e.stopPropagation()
           if (tag && onTagClick) onTagClick(e, tag.id)
         }}
-        className="inline-flex items-center text-xs px-2 py-0 leading-none mx-px rounded-full font-medium bg-tag-bg text-tag transition-colors hover:bg-tag-bg-hover"
+        className="inline-flex items-center text-xs px-2 py-0.5 mx-px rounded-full font-medium bg-tag-bg text-tag transition-colors hover:bg-tag-bg-hover"
         title={tag ? `筛选 #${name}` : `#${name}（本地无实体）`}
       >
         #{name}
