@@ -1,10 +1,17 @@
-/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import checker from 'vite-plugin-checker'
 
 export default defineConfig({
-  base: './',
-  plugins: [react()],
+  base: '/',
+  plugins: [
+    react(),
+    checker({
+      typescript: {
+        tsconfigPath: './tsconfig.json',
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': '/src',
@@ -26,7 +33,7 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
-    setupFiles: ['./src/test/setup.js'],
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
   },
 })
