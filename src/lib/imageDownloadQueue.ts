@@ -70,10 +70,42 @@ declare global {
   }
 }
 
+/** 下载进度事件:每 ~50ms dispatch 一次;received/total 单位字节 */
+export interface ImageDownloadProgressDetail {
+  noteId: string
+  kind: 'original' | 'thumb' | 'thumb-sm'
+  received: number
+  total: number
+  /** 0-1;total=0 时为 0(老浏览器 / chunked transfer 没 content-length) */
+  ratio: number
+}
+declare global {
+  interface WindowEventMap {
+    'image-download-progress': CustomEvent<ImageDownloadProgressDetail>
+  }
+}
+
+/**
+ * 当前 note 的进度缓存;UI 直接读 getProgress() 拿最新值,
+ * 不必每个 NoteImage 各自 listen + 维护 state。
+ * 取消时清空。
+ */
+const progressMap = new Map<string, ImageDownloadProgressDetail>()
+
+/** 单测 + UI 都能读;返回最新一条 progress(任意 kind)。null = 未开始或已完成 */
+export function getProgress(noteId: string): ImageDownloadProgressDetail | null {
+  return progressMap.get(noteId) ?? null
+}
+
 /** 单 note 当前 in-flight 任务;不区分 original / thumb / thumb-sm,统一并发 */
 const inflight = new Map<string, QueueItem>()
 /** 等待中的 note(去重用);priority 提升时更新 version */
 const pending = new Map<string, QueueItem>()
+
+/** 全局:正在 in-flight 的 note 数(去重 — 同一 note 算 1) */
+export function getActiveDownloadCount(): number {
+  return inflight.size
+}
 
 function timeoutFor(item: QueueItem): number {
   if (item.retry > 0) return TIMEOUT_RETRY_MS
@@ -85,6 +117,36 @@ function isCancelled(item: QueueItem): boolean {
   // 版本不匹配:enqueue 新值时已自增 version,旧任务视为取消
   const current = inflight.get(item.source.noteId) ?? pending.get(item.source.noteId)
   return current !== item
+}
+
+async function readWithProgress(
+  resp: Response,
+  onChunk: (received: number, total: number) => void,
+): Promise<Blob> {
+  // 不支持 stream 的环境(如某些 polyfill)降级到 blob(),无进度
+  if (!resp.body) return resp.blob()
+  const total = Number(resp.headers.get('content-length')) || 0
+  const reader = resp.body.getReader()
+  const chunks: BlobPart[] = []
+  let received = 0
+  let lastEmit = 0
+  // 注:这里没有 try/catch — abort 期间 reader.read() 抛 AbortError 会自然传到上层
+  // processItem 的 catch 把它当 cancel 处理,不计数重试。
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    received += value.length
+    // 节流:每 50ms dispatch 一次,避免高频 re-render
+    const now = performance.now()
+    if (now - lastEmit > 50) {
+      onChunk(received, total)
+      lastEmit = now
+    }
+  }
+  // 确保最后 100% 一定发
+  onChunk(received, total)
+  return new Blob(chunks)
 }
 
 async function downloadOne(
@@ -103,7 +165,27 @@ async function downloadOne(
   if (!resp.ok) {
     throw Object.assign(new Error(`HTTP ${resp.status}`), { code: 'http' as const })
   }
-  const blob = await resp.blob()
+  const blob = await readWithProgress(resp, (received, total) => {
+    // 已取消就不写 map(避免 race)
+    if (signal.aborted) return
+    const ratio = total > 0 ? received / total : 0
+    const detail: ImageDownloadProgressDetail = { noteId, kind, received, total, ratio }
+    progressMap.set(noteId, detail)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent<ImageDownloadProgressDetail>('image-download-progress', { detail }),
+      )
+    }
+  })
+  // 完成:map 清掉,但 dispatch 一次 100% 让 UI 收尾(setState 接管后续)
+  progressMap.delete(noteId)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent<ImageDownloadProgressDetail>('image-download-progress', {
+        detail: { noteId, kind, received: blob.size, total: blob.size, ratio: 1 },
+      }),
+    )
+  }
   const realMime: ImageMime = kind === 'thumb' || kind === 'thumb-sm' ? 'image/jpeg' : mime
   let width = 0
   let height = 0
@@ -303,10 +385,29 @@ export function enqueue(opts: {
 /** 取消某 note 的下载(列表 unmount 时调) */
 export function cancelNote(noteId: string): void {
   const item = inflight.get(noteId) ?? pending.get(noteId)
-  if (!item) return
+  if (!item) {
+    // 即使没有 inflight/pending,也要清进度缓存(防止 stale progress)
+    progressMap.delete(noteId)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent<ImageDownloadProgressDetail>('image-download-progress', {
+          detail: { noteId, kind: 'original', received: 0, total: 0, ratio: 0 },
+        }),
+      )
+    }
+    return
+  }
   item.controller.abort()
   inflight.delete(noteId)
   pending.delete(noteId)
+  progressMap.delete(noteId)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent<ImageDownloadProgressDetail>('image-download-progress', {
+        detail: { noteId, kind: 'original', received: 0, total: 0, ratio: 0 },
+      }),
+    )
+  }
 }
 
 /** 取消所有 in-flight / pending(用户登出 / sync 停止时调) */
@@ -315,6 +416,7 @@ export function cancelAll(): void {
   for (const item of pending.values()) item.controller.abort()
   inflight.clear()
   pending.clear()
+  progressMap.clear()
 }
 
 /** 手动重试(占位"重试"按钮) */

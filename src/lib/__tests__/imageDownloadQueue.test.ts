@@ -21,6 +21,7 @@ import {
   _debugSnapshot,
   type EnqueueSource,
   type ImageDownloadFailedDetail,
+  type ImageDownloadProgressDetail,
 } from '@/lib/imageDownloadQueue'
 
 // mock noteImageStorage:getImageSignedUrl
@@ -232,5 +233,67 @@ describe('imageDownloadQueue', () => {
       await flush(10)
     }
     expect(m4Inflight).toBe(true)
+  })
+
+  it('下载完成 dispatch image-download-progress 事件(最终 ratio=1, total 已知)', async () => {
+    // 用一个 readable stream 让 readWithProgress 走完流式路径
+    const fakeBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x89, 0x50]))
+        controller.enqueue(new Uint8Array([0x4e, 0x47]))
+        controller.close()
+      },
+    })
+    const fakeResp = new Response(fakeBody, {
+      status: 200,
+      headers: { 'content-type': 'image/png', 'content-length': '4' },
+    })
+    fakeFetch.mockResolvedValueOnce(fakeResp)
+
+    const events: ImageDownloadProgressDetail[] = []
+    const handler = (e: Event): void => {
+      events.push((e as CustomEvent<ImageDownloadProgressDetail>).detail)
+    }
+    window.addEventListener('image-download-progress', handler)
+
+    enqueue({ source: mkSource(), priority: 'visible' })
+    await flush(50)
+
+    window.removeEventListener('image-download-progress', handler)
+
+    // 应至少有 1 条进度 + 最后 ratio=1
+    expect(events.length).toBeGreaterThan(0)
+    const last = events[events.length - 1]
+    expect(last.noteId).toBe('n1')
+    expect(last.ratio).toBe(1)
+    expect(last.total).toBe(4)
+  })
+
+  it('cancelNote 清掉 progress map + dispatch ratio=0 事件', async () => {
+    // 让 fetch hang,然后 cancel
+    fetchBehavior = 'hang'
+    fetchDelayMs = 1000
+
+    enqueue({ source: mkSource(), priority: 'visible' })
+    await flush(20)
+
+    const events: ImageDownloadProgressDetail[] = []
+    const handler = (e: Event): void => {
+      events.push((e as CustomEvent<ImageDownloadProgressDetail>).detail)
+    }
+    window.addEventListener('image-download-progress', handler)
+
+    cancelNote('n1')
+    await flush(20)
+
+    window.removeEventListener('image-download-progress', handler)
+
+    // cancelNote 自己 dispatch 的 cancel 信号
+    const cancelEvent = events.find((e) => e.total === 0 && e.received === 0 && e.noteId === 'n1')
+    expect(cancelEvent).toBeDefined()
+
+    // getProgress 应该 null
+    const { getProgress } = await import('@/lib/imageDownloadQueue')
+    expect(getProgress('n1')).toBeNull()
   })
 })
