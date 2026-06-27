@@ -20,6 +20,14 @@ const mkNote = (over: Partial<Note> = {}): Note => ({
   version: 1,
   sync_status: 'pending',
   last_synced_at: null,
+  image_path: null,
+  image_thumb_path: null,
+  image_thumb_sm_path: null,
+  image_uploaded_at: null,
+  image_mime: null,
+  image_size: null,
+  image_width: null,
+  image_height: null,
   ...over,
 })
 

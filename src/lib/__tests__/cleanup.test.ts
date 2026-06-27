@@ -27,12 +27,16 @@ describe('cleanup', () => {
       created_at: daysAgo(60), updated_at: daysAgo(60),
       deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
       archived_at: null, last_synced_at: null,
+      image_path: null, image_thumb_path: null, image_thumb_sm_path: null, image_uploaded_at: null,
+      image_mime: null, image_size: null, image_width: null, image_height: null,
     })
     await db.notes.add({
       id: 'new', content: '', status: 'pending',
       created_at: daysAgo(10), updated_at: daysAgo(10),
       deleted_at: daysAgo(5), version: 1, sync_status: 'synced',
       archived_at: null, last_synced_at: null,
+      image_path: null, image_thumb_path: null, image_thumb_sm_path: null, image_uploaded_at: null,
+      image_mime: null, image_size: null, image_width: null, image_height: null,
     })
     const stats = await runCleanup({ now: NOW })
     expect(stats.notes).toBe(1)
@@ -46,6 +50,8 @@ describe('cleanup', () => {
       created_at: daysAgo(60), updated_at: daysAgo(60),
       deleted_at: daysAgo(31), version: 1, sync_status: 'synced',
       archived_at: null, last_synced_at: null,
+      image_path: null, image_thumb_path: null, image_thumb_sm_path: null, image_uploaded_at: null,
+      image_mime: null, image_size: null, image_width: null, image_height: null,
     })
     await db.note_tags.add({
       note_id: 'old', tag_id: 't1', created_at: daysAgo(60),
@@ -85,6 +91,8 @@ describe('cleanup', () => {
       created_at: daysAgo(5), updated_at: daysAgo(5),
       deleted_at: daysAgo(5), version: 1, sync_status: 'synced',
       archived_at: null, last_synced_at: null,
+      image_path: null, image_thumb_path: null, image_thumb_sm_path: null, image_uploaded_at: null,
+      image_mime: null, image_size: null, image_width: null, image_height: null,
     })
     const stats = await runCleanup({ now: NOW })
     expect(stats.notes).toBe(0)

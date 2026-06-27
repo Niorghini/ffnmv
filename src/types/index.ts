@@ -8,9 +8,12 @@
 export type {} from './base/env'
 
 // 数据库实体类型
-export type { Note } from './db/note'
+export type { Note, PendingImageUpload } from './db/note'
 export type { Tag } from './db/tag'
 export type { NoteTag, NoteTagKey } from './db/noteTag'
+export type { Attachment, AttachmentKind } from './db/attachment'
+export type { ImageMime } from './db/attachment'
+export { IMAGE_MIME_TYPES } from './db/attachment'
 export type {
   EntityType,
   SyncOpType,
