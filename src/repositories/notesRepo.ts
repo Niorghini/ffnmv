@@ -13,6 +13,9 @@ import { noteTagsRepo } from './noteTagsRepo'
 import { tagsRepo } from './tagsRepo'
 import { supabase } from '@/lib/supabase'
 import type { Note, NoteTag, SyncOpType, SyncQueueStatus } from '@/types'
+import type { PickedImage } from '@/lib/imagePicker'
+import { processImage } from '@/lib/imageProcessor'
+import { deleteNoteImage } from '@/lib/noteImageStorage'
 
 const PRIORITY: Record<SyncOpType, 1 | 3 | 5 | 8> = {
   create: 1,
@@ -37,6 +40,8 @@ const enqueue = (type: SyncOpType, entityId: string): void => {
 export interface CreateNoteInput {
   content: string
   tagIds?: string[]
+  /** v1.3.2+:可选图片附件。提供时本地 attachments 写入原图+缩略图,notes 行 image_* 元数据填好,image_path/uploaded_at=null 等 imageUploadQueue 后台异步上传 */
+  image?: PickedImage
 }
 
 export interface UpdateNoteInput {
@@ -46,8 +51,11 @@ export interface UpdateNoteInput {
 export const notesRepo = {
   /**
    * 创建笔记
+   * - 若传入 image:走 processImage 出原图+缩略图,attachments 写 2 行,notes 行 image_* 元数据填好
+   *   (image_path / image_uploaded_at 留 null,后台 imageUploadQueue 推)
+   * - 整个 create 在一个事务里(notes + attachments + sync_queue)
    */
-  async create({ content, tagIds = [] }: CreateNoteInput): Promise<Note> {
+  async create({ content, tagIds = [], image }: CreateNoteInput): Promise<Note> {
     const id = uuidv4()
     const ts = nowIso()
     const note: Note = {
@@ -61,8 +69,27 @@ export const notesRepo = {
       sync_status: 'pending',
       last_synced_at: null,
       archived_at: null,
+      image_path: null,
+      image_thumb_path: null,
+      image_thumb_sm_path: null,
+      image_uploaded_at: null,
+      image_mime: null,
+      image_size: null,
+      image_width: null,
+      image_height: null,
     }
-    await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, async () => {
+
+    // 先处理图(可能抛 ImageTooLargeError / ImageUnsupportedError)
+    let processed: Awaited<ReturnType<typeof processImage>> | null = null
+    if (image) {
+      processed = await processImage(image.blob)
+      note.image_mime = processed.mime
+      note.image_size = processed.size
+      note.image_width = processed.width
+      note.image_height = processed.height
+    }
+
+    await db.transaction('rw', db.notes, db.sync_queue, db.note_tags, db.attachments, async () => {
       await db.notes.add(note)
       await enqueue('create', id)
       for (const tagId of tagIds) {
@@ -78,10 +105,115 @@ export const notesRepo = {
         })
         await enqueueTagAttach(id, tagId)
       }
+      // 写 attachments(原图 + thumb + thumb-sm)
+      if (processed) {
+        await db.attachments.add({
+          id: uuidv4(),
+          note_id: id,
+          kind: 'original',
+          blob: processed.original,
+          mime: processed.mime,
+          size: processed.original.size,
+          width: processed.width,
+          height: processed.height,
+          created_at: ts,
+        })
+        await db.attachments.add({
+          id: uuidv4(),
+          note_id: id,
+          kind: 'thumb',
+          blob: processed.thumb,
+          mime: 'image/jpeg',
+          size: processed.thumb.size,
+          width: processed.width,
+          height: processed.height,
+          created_at: ts,
+        })
+        await db.attachments.add({
+          id: uuidv4(),
+          note_id: id,
+          kind: 'thumb-sm',
+          blob: processed.thumbSm,
+          mime: 'image/jpeg',
+          size: processed.thumbSm.size,
+          width: processed.width,
+          height: processed.height,
+          created_at: ts,
+        })
+      }
     })
     emitDataUpdated('notes', { rows: [note] })
     emitDataUpdated('note_tags', { rows: tagIds.map((tagId): NoteTag => ({ note_id: id, tag_id: tagId, created_at: ts, updated_at: ts, deleted_at: null, version: 1, sync_status: 'pending', last_synced_at: null })) })
     return note
+  },
+
+  /**
+   * 给已有笔记附加图片(每条最多 1 张;已有图会先删)
+   */
+  async attachImage(noteId: string, picked: PickedImage): Promise<Note> {
+    const existing = await db.notes.get(noteId)
+    if (!existing) throw new Error(`Note ${noteId} not found`)
+    if (existing.deleted_at) throw new Error('Cannot attach image to a deleted note')
+    return replaceImageInternal(noteId, picked, existing)
+  },
+
+  /**
+   * 替换图片(同 attachImage,语义上强调"替换"以触发旧 Storage 删除)
+   */
+  async replaceImage(noteId: string, picked: PickedImage): Promise<Note> {
+    const existing = await db.notes.get(noteId)
+    if (!existing) throw new Error(`Note ${noteId} not found`)
+    if (existing.deleted_at) throw new Error('Cannot replace image on a deleted note')
+    return replaceImageInternal(noteId, picked, existing)
+  },
+
+  /**
+   * 移除图片(本地 attachments 删 + 异步删 Storage)
+   */
+  async removeImage(noteId: string): Promise<Note> {
+    const ts = nowIso()
+    let updated!: Note
+    const oldPaths = {
+      path: undefined as string | undefined,
+      thumb: undefined as string | undefined,
+      thumbSm: undefined as string | undefined,
+    }
+    await db.transaction('rw', db.notes, db.sync_queue, db.attachments, async () => {
+      const existing = await db.notes.get(noteId)
+      if (!existing) throw new Error(`Note ${noteId} not found`)
+      oldPaths.path = existing.image_path ?? undefined
+      oldPaths.thumb = existing.image_thumb_path ?? undefined
+      oldPaths.thumbSm = existing.image_thumb_sm_path ?? undefined
+      updated = {
+        ...existing,
+        image_path: null,
+        image_thumb_path: null,
+        image_thumb_sm_path: null,
+        image_uploaded_at: null,
+        image_mime: null,
+        image_size: null,
+        image_width: null,
+        image_height: null,
+        updated_at: ts,
+        version: existing.version + 1,
+        sync_status: 'pending',
+      }
+      await db.notes.put(updated)
+      await enqueue('update', noteId)
+      // 清本地 attachments
+      const atts = await db.attachments.where('note_id').equals(noteId).toArray()
+      for (const a of atts) {
+        await db.attachments.delete(a.id)
+      }
+    })
+    // 异步删 Storage(best-effort,失败 warn 不影响本地)
+    if (oldPaths.path && oldPaths.thumb) {
+      void deleteNoteImage(oldPaths.path, oldPaths.thumb, oldPaths.thumbSm).catch((e: unknown) => {
+        console.warn(`[notesRepo] async delete storage failed for note ${noteId}:`, e)
+      })
+    }
+    emitDataUpdated('notes', { rows: [updated] })
+    return updated
   },
 
   /**
@@ -298,6 +430,14 @@ export const notesRepo = {
     const linksBefore = await db.note_tags.where('note_id').equals(id).toArray()
     const tagIdsToCheck = [...new Set(linksBefore.filter((l) => !l.deleted_at).map((l) => l.tag_id))]
 
+    // 0. 收集图片 storage 路径(事务结束后异步删)
+    const noteForImage = await db.notes.get(id)
+    const imagePaths = {
+      path: noteForImage?.image_path ?? undefined,
+      thumb: noteForImage?.image_thumb_path ?? undefined,
+      thumbSm: noteForImage?.image_thumb_sm_path ?? undefined,
+    }
+
     // 1. 云端同步删（先做；云端失败只 warn，不阻塞本地——避免让云端软删行「复活」回本地）
     try {
       const { data: userData } = await supabase.auth.getUser()
@@ -320,8 +460,8 @@ export const notesRepo = {
       // 继续本地删除
     }
 
-    // 2. 本地事务：删 note + 它的所有 link + 清 sync_queue 残留
-    await db.transaction('rw', [db.notes, db.note_tags, db.sync_queue], async () => {
+    // 2. 本地事务：删 note + 它的所有 link + 清 sync_queue 残留 + 删 attachments
+    await db.transaction('rw', [db.notes, db.note_tags, db.sync_queue, db.attachments], async () => {
       const existing = await db.notes.get(id)
       if (!existing) return
       const links = await db.note_tags.where('note_id').equals(id).toArray()
@@ -335,13 +475,25 @@ export const notesRepo = {
       for (const q of queueItems) {
         if (q.id != null) await db.sync_queue.delete(q.id)
       }
+      // 删本地 attachments(原图 + 缩略图)
+      const atts = await db.attachments.where('note_id').equals(id).toArray()
+      for (const a of atts) {
+        await db.attachments.delete(a.id)
+      }
       await db.notes.delete(id)
     })
     // 物理删 → 视图移除 + trash 也移除
     emitDataUpdated('notes', { removed: [id] })
     emitDataUpdated('note_tags')
 
-    // 3. 自动清理：扫一下「这个 note 用过」的 tag，如果现在没有任何活跃 link + 没软删，hardDelete
+    // 3. 异步删 Storage 上的图(best-effort,失败 warn)
+    if (imagePaths.path && imagePaths.thumb) {
+      void deleteNoteImage(imagePaths.path, imagePaths.thumb, imagePaths.thumbSm).catch((e: unknown) => {
+        console.warn(`[hardDelete] delete storage image failed for note ${id}:`, e)
+      })
+    }
+
+    // 4. 自动清理：扫一下「这个 note 用过」的 tag，如果现在没有任何活跃 link + 没软删，hardDelete
     if (tagIdsToCheck.length > 0) {
       const allLinks = await db.note_tags.toArray()
       const activeLinkTagIds = new Set(
@@ -494,6 +646,98 @@ const enqueueTagAttach = (noteId: string, tagId: string) =>
     status: 'pending',
     created_at: nowIso(),
   })
+
+/**
+ * attachImage / replaceImage 共用的内部流程:
+ * 1. processImage 出原图+缩略图
+ * 2. 事务里:删旧 attachments + 写新 attachments + update notes 行 image_* 元数据
+ * 3. 事务外:异步删旧 Storage 对象(best-effort)
+ */
+async function replaceImageInternal(
+  noteId: string,
+  picked: PickedImage,
+  existing: Note,
+): Promise<Note> {
+  const processed = await processImage(picked.blob)
+  const ts = nowIso()
+  const oldPaths = {
+    path: existing.image_path ?? undefined,
+    thumb: existing.image_thumb_path ?? undefined,
+    thumbSm: existing.image_thumb_sm_path ?? undefined,
+  }
+  let updated!: Note
+
+  await db.transaction('rw', db.notes, db.sync_queue, db.attachments, async () => {
+    // 清旧 attachments(若已有图)
+    const oldAtts = await db.attachments.where('note_id').equals(noteId).toArray()
+    for (const a of oldAtts) {
+      await db.attachments.delete(a.id)
+    }
+
+    // 写新 attachments
+    await db.attachments.add({
+      id: uuidv4(),
+      note_id: noteId,
+      kind: 'original',
+      blob: processed.original,
+      mime: processed.mime,
+      size: processed.original.size,
+      width: processed.width,
+      height: processed.height,
+      created_at: ts,
+    })
+    await db.attachments.add({
+      id: uuidv4(),
+      note_id: noteId,
+      kind: 'thumb',
+      blob: processed.thumb,
+      mime: 'image/jpeg',
+      size: processed.thumb.size,
+      width: processed.width,
+      height: processed.height,
+      created_at: ts,
+    })
+    await db.attachments.add({
+      id: uuidv4(),
+      note_id: noteId,
+      kind: 'thumb-sm',
+      blob: processed.thumbSm,
+      mime: 'image/jpeg',
+      size: processed.thumbSm.size,
+      width: processed.width,
+      height: processed.height,
+      created_at: ts,
+    })
+
+    // 更新 notes 行 image_* 元数据
+    updated = {
+      ...existing,
+      image_path: null,             // 后台上传完才填
+      image_thumb_path: null,
+      image_thumb_sm_path: null,
+      image_uploaded_at: null,
+      image_mime: processed.mime,
+      image_size: processed.size,
+      image_width: processed.width,
+      image_height: processed.height,
+      updated_at: ts,
+      version: existing.version + 1,
+      sync_status: 'pending',
+    }
+    await db.notes.put(updated)
+    await enqueue('update', noteId)
+  })
+
+  // 异步删旧 Storage(best-effort)
+  if (oldPaths.path && oldPaths.thumb) {
+    void deleteNoteImage(oldPaths.path, oldPaths.thumb, oldPaths.thumbSm).catch((e: unknown) => {
+      console.warn(`[notesRepo] async delete old storage failed for note ${noteId}:`, e)
+    })
+  }
+
+  emitDataUpdated('notes', { rows: [updated] })
+  return updated
+}
 
 // 抑制 lint 警告：noteTagsRepo 在 setStatus 等场景未直接引用，但保留以支持循环依赖兜底
 void noteTagsRepo

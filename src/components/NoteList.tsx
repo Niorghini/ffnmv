@@ -14,7 +14,11 @@ import { useTagsStore } from '@/stores/useTagsStore'
 import { notesRepo } from '@/repositories/notesRepo'
 import { extractTagNames } from '@/lib/tags'
 import { db } from '@/lib/db'
+import { useIntersectionVisible } from '@/hooks/useIntersectionVisible'
+import { enqueue } from '@/lib/imageDownloadQueue'
 import type { Note, Tag } from '@/types'
+import NoteImage from './NoteImage'
+import Lightbox from './Lightbox'
 
 const TAG_RE = /#([\w一-鿿-]+)/g
 
@@ -29,6 +33,8 @@ const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
   const { tags, load: loadTags } = useTagsStore()
   // 当前在「就地编辑」的笔记 id
   const [editingId, setEditingId] = useState<string | null>(null)
+  // lightbox 显示哪条 note
+  const [lightboxNoteId, setLightboxNoteId] = useState<string | null>(null)
 
   useEffect(() => {
     void load()
@@ -138,6 +144,7 @@ const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
             active={activeId === n.id}
             editing={editingId === n.id}
             onClick={() => onSelect(n.id)}
+            onImageClick={() => setLightboxNoteId(n.id)}
             onToggleStatus={(e) => handleToggleStatus(e, n)}
             onEdit={(e) => handleEdit(e, n)}
             onDelete={(e) => handleDelete(e, n)}
@@ -149,6 +156,10 @@ const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
           />
         ))
       )}
+      {lightboxNoteId && (() => {
+        const n = notes.find((x) => x.id === lightboxNoteId)
+        return n ? <Lightbox note={n} onClose={() => setLightboxNoteId(null)} /> : null
+      })()}
     </section>
   )
 }
@@ -158,6 +169,7 @@ interface NoteRowProps {
   active: boolean
   editing: boolean
   onClick: () => void
+  onImageClick: () => void
   onToggleStatus: (e: MouseEvent) => void
   onEdit: (e: MouseEvent) => void
   onDelete: (e: MouseEvent) => void
@@ -173,6 +185,7 @@ const NoteRow = ({
   active,
   editing,
   onClick,
+  onImageClick,
   onToggleStatus,
   onEdit,
   onDelete,
@@ -206,6 +219,11 @@ const NoteRow = ({
       >
         {renderContentWithTags(note.content, tagByName, onTagClick)}
       </div>
+      {note.image_size != null && (
+        <div className="mt-2">
+          <NoteRowImage note={note} onImageClick={onImageClick} />
+        </div>
+      )}
       <div className="flex items-end justify-between mt-3">
         <span className="text-xs text-gray-400">{formatTime(note.created_at)}</span>
         <div className="note-row-actions flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -338,6 +356,74 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName: _tagByName }: NoteRo
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * 列表场景的 NoteImage 包装
+ * - 默认用 thumb-sm(256px,列表场景最适合)
+ * - 接 IntersectionObserver:进入视口把 queue priority 提到 'visible',离开 1s 降级回 'prefetch'
+ */
+const NoteRowImage = ({ note, onImageClick }: { note: Note; onImageClick: () => void }) => {
+  const { ref, visible, hasBeenVisible } = useIntersectionVisible<HTMLDivElement>({
+    rootMargin: '200px',
+  })
+  const lastPriority = useRef<'visible' | 'prefetch' | null>(null)
+  const downgradedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!hasBeenVisible) return
+    if (!note.image_path || !note.image_mime) return
+    // 进入视口:提 visible
+    if (visible) {
+      if (downgradedTimer.current) {
+        clearTimeout(downgradedTimer.current)
+        downgradedTimer.current = null
+      }
+      if (lastPriority.current !== 'visible') {
+        lastPriority.current = 'visible'
+        enqueue({
+          source: {
+            noteId: note.id,
+            imagePath: note.image_path!,
+            thumbPath: note.image_thumb_path,
+            thumbSmPath: note.image_thumb_sm_path,
+            mime: note.image_mime ?? 'image/jpeg',
+          },
+          priority: 'visible',
+        })
+      }
+    } else {
+      // 离开视口:1s 后降级到 prefetch(避免快速滚过反复触发)
+      if (lastPriority.current === 'visible') {
+        if (downgradedTimer.current) clearTimeout(downgradedTimer.current)
+        downgradedTimer.current = setTimeout(() => {
+          lastPriority.current = 'prefetch'
+          enqueue({
+            source: {
+              noteId: note.id,
+              imagePath: note.image_path!,
+              thumbPath: note.image_thumb_path,
+              thumbSmPath: note.image_thumb_sm_path,
+              mime: note.image_mime ?? 'image/jpeg',
+            },
+            priority: 'prefetch',
+          })
+        }, 1000)
+      }
+    }
+  }, [visible, hasBeenVisible, note.id, note.image_path, note.image_thumb_path, note.image_thumb_sm_path, note.image_mime])
+
+  useEffect(() => {
+    return () => {
+      if (downgradedTimer.current) clearTimeout(downgradedTimer.current)
+    }
+  }, [])
+
+  return (
+    <div ref={ref}>
+      <NoteImage note={note} variant="thumb-sm" onImageClick={onImageClick} />
     </div>
   )
 }

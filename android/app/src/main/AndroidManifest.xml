@@ -40,4 +40,12 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 图片附件(v1.3.2+) -->
+    <!-- 相册 / 相机权限;@capacitor/camera 在 getPhoto 时会按需请求 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Android 13+:精确定位用 READ_MEDIA_IMAGES 替代 READ_EXTERNAL_STORAGE -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 12-:旧版相册访问(只对 API ≤ 32 生效) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 </manifest>
