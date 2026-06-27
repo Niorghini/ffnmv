@@ -23,9 +23,15 @@ import { db } from '@/lib/db'
 import {
   enqueue,
   retry as queueRetry,
+  cancelNote,
   type ImageDownloadFailedDetail,
+  type ImageDownloadProgressDetail,
 } from '@/lib/imageDownloadQueue'
+import ProgressBar from './ProgressBar'
 import type { Note } from '@/types'
+
+/** 进度条显示阈值:小图直接显示 spinner,跳过进度条 */
+const PROGRESS_MIN_BYTES = 50_000
 
 export interface LightboxProps {
   note: Note
@@ -38,6 +44,8 @@ const Lightbox = ({ note, onClose }: LightboxProps) => {
   const [phase, setPhase] = useState<Phase>('placeholder')
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [fullUrl, setFullUrl] = useState<string | null>(null)
+  /** 原图下载进度;null = 未开始 / 已完成 / 取消 */
+  const [progress, setProgress] = useState<{ received: number; total: number; ratio: number } | null>(null)
   const thumbUrlRef = useRef<string | null>(null)
   const fullUrlRef = useRef<string | null>(null)
 
@@ -54,10 +62,40 @@ const Lightbox = ({ note, onClose }: LightboxProps) => {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ImageDownloadFailedDetail>).detail
-      if (detail.noteId === note.id) setPhase('failed')
+      if (detail.noteId === note.id) {
+        setPhase('failed')
+        setProgress(null)
+      }
     }
     window.addEventListener('image-download-failed', handler)
     return () => window.removeEventListener('image-download-failed', handler)
+  }, [note.id])
+
+  // 监听 image-download-progress:更新原图下载进度
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ImageDownloadProgressDetail>).detail
+      if (detail.noteId !== note.id) return
+      // cancel 信号 / 100% 完成 → 清进度
+      if (detail.total === 0 && detail.received === 0) {
+        setProgress(null)
+        return
+      }
+      if (detail.ratio >= 1) {
+        setProgress(null)
+        return
+      }
+      setProgress({
+        received: detail.received,
+        total: detail.total,
+        ratio: detail.ratio,
+      })
+    }
+    window.addEventListener('image-download-progress', handler)
+    return () => {
+      window.removeEventListener('image-download-progress', handler)
+      setProgress(null)
+    }
   }, [note.id])
 
   // 加载 thumb-sm 当 placeholder + 入队 original 下载
@@ -213,9 +251,29 @@ const Lightbox = ({ note, onClose }: LightboxProps) => {
             {note.content}
           </div>
         )}
+
+        {/* 下载进度条:大图才显示(< 50KB 不显示) */}
+        {progress && progress.total >= PROGRESS_MIN_BYTES && (
+          <div className="mt-3 w-full max-w-md px-4">
+            <ProgressBar
+              ratio={progress.ratio}
+              height={3}
+              showCancel
+              onCancel={() => cancelNote(note.id)}
+              label={`${formatBytes(progress.received)} / ${formatBytes(progress.total)}`}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+/** 字节 → 人类可读(KB / MB) */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 export default Lightbox

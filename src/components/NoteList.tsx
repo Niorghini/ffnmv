@@ -15,7 +15,8 @@ import { notesRepo } from '@/repositories/notesRepo'
 import { extractTagNames } from '@/lib/tags'
 import { db } from '@/lib/db'
 import { useIntersectionVisible } from '@/hooks/useIntersectionVisible'
-import { enqueue } from '@/lib/imageDownloadQueue'
+import { enqueue, getActiveDownloadCount } from '@/lib/imageDownloadQueue'
+import ProgressBar from './ProgressBar'
 import type { Note, Tag } from '@/types'
 import NoteImage from './NoteImage'
 import Lightbox from './Lightbox'
@@ -124,6 +125,7 @@ const NoteList = ({ activeId, onSelect, onTagClick }: NoteListProps) => {
 
   return (
     <section className="space-y-2">
+      <GlobalProgressBar />
       {(statusFilter !== 'all' || searchQuery || activeTagId) && (
         <div className="px-3 py-2 text-xs text-gray-500 bg-white rounded-lg shadow-sm flex items-center justify-between">
           <span>共 {filtered.length} 条</span>
@@ -356,6 +358,45 @@ const NoteRowEditor = ({ note, onSave, onCancel, tagByName: _tagByName }: NoteRo
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * 列表顶部全局进度条
+ * - 反映当前 imageDownloadQueue 正在 in-flight 的 note 数(去重)
+ * - 显示为横条 + "加载图片中(N)" 文案
+ * - N=0 时整体高度归零(不占布局空间),避免滚动跳动
+ */
+const GlobalProgressBar = () => {
+  const [active, setActive] = useState(0)
+  useEffect(() => {
+    // 初始值
+    setActive(getActiveDownloadCount())
+    // 每次 progress event fire 时重新读(简易做法,无独立 store)
+    const onProgress = (): void => setActive(getActiveDownloadCount())
+    const onFailed = (): void => setActive(getActiveDownloadCount())
+    window.addEventListener('image-download-progress', onProgress)
+    window.addEventListener('image-download-failed', onFailed)
+    // 也轮询一次兜底(避免 event 漏派发):500ms 间隔
+    const t = window.setInterval(() => setActive(getActiveDownloadCount()), 500)
+    return () => {
+      window.removeEventListener('image-download-progress', onProgress)
+      window.removeEventListener('image-download-failed', onFailed)
+      window.clearInterval(t)
+    }
+  }, [])
+  if (active === 0) return null
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 bg-white/80 rounded-lg shadow-sm border border-gray-100"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex-1 min-w-0">
+        <ProgressBar ratio={0} height={3} className="opacity-60" />
+      </div>
+      <span className="shrink-0">加载图片中 · {active}</span>
     </div>
   )
 }

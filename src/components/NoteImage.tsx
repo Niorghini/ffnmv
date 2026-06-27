@@ -25,8 +25,13 @@ import {
   retry as queueRetry,
   type EnqueueSource,
   type ImageDownloadFailedDetail,
+  type ImageDownloadProgressDetail,
 } from '@/lib/imageDownloadQueue'
+import ProgressBar from './ProgressBar'
 import type { Note } from '@/types'
+
+/** 进度条显示阈值:总字节 < 此值不显示(thumb-sm ~20KB,太快了) */
+const PROGRESS_MIN_BYTES = 50_000
 
 export interface NoteImageProps {
   note: Note
@@ -61,6 +66,8 @@ const NoteImage = ({
 }: NoteImageProps) => {
   const [state, setState] = useState<LoadState>('idle')
   const [url, setUrl] = useState<string | null>(null)
+  /** 当前下载进度;state=loading 时使用;ready/failed 时清空 */
+  const [progress, setProgress] = useState<{ received: number; total: number; ratio: number } | null>(null)
   const urlRef = useRef<string | null>(null)
 
   const hasImage = note.image_size != null
@@ -73,10 +80,40 @@ const NoteImage = ({
       const detail = (e as CustomEvent<ImageDownloadFailedDetail>).detail
       if (detail.noteId === note.id) {
         setState('failed')
+        setProgress(null)
       }
     }
     window.addEventListener('image-download-failed', handler)
     return () => window.removeEventListener('image-download-failed', handler)
+  }, [note.id, hasImage])
+
+  // 监听 image-download-progress:更新本 note 的进度条
+  useEffect(() => {
+    if (!hasImage) return
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ImageDownloadProgressDetail>).detail
+      if (detail.noteId !== note.id) return
+      // ratio=0 + total=0 是 cancel 信号;清掉进度
+      if (detail.total === 0 && detail.received === 0) {
+        setProgress(null)
+        return
+      }
+      // 100% 完成:让 loading → ready 的轮询逻辑接管,这里只 set null
+      if (detail.ratio >= 1) {
+        setProgress(null)
+        return
+      }
+      setProgress({
+        received: detail.received,
+        total: detail.total,
+        ratio: detail.ratio,
+      })
+    }
+    window.addEventListener('image-download-progress', handler)
+    return () => {
+      window.removeEventListener('image-download-progress', handler)
+      setProgress(null)
+    }
   }, [note.id, hasImage])
   // 监听 image-thumb-ready:小缩略图刚下完,不等 poll 100ms 轮询,立即重新查 attachments 渲染
   useEffect(() => {
@@ -213,13 +250,25 @@ const NoteImage = ({
   if (!hasImage) return null
 
   if (state === 'loading') {
+    // 仅在"较大的图"显示进度条(< 50KB 的 thumb-sm 直接显示 spinner,闪一下进度条没意义)
+    const showProgress =
+      progress !== null && progress.total >= PROGRESS_MIN_BYTES
     return (
       <div
         className={`flex flex-col items-center justify-center bg-gray-100 rounded-md ${className}`}
         style={{ minHeight: 120 }}
       >
         <Loader2 size={20} className="animate-spin text-gray-400 mb-1" />
-        <span className="text-[10px] text-gray-400">图片加载中</span>
+        <span className="text-[10px] text-gray-400 mb-1">图片加载中</span>
+        {showProgress && (
+          <div className="w-3/4 max-w-[200px]">
+            <ProgressBar
+              ratio={progress.ratio}
+              height={2}
+              label={`${formatBytes(progress.received)} / ${formatBytes(progress.total)}`}
+            />
+          </div>
+        )}
       </div>
     )
   }
@@ -283,6 +332,13 @@ const NoteImage = ({
   }
 
   return null
+}
+
+/** 字节 → 人类可读(KB / MB) */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 export default NoteImage
