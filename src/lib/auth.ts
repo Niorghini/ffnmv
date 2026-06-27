@@ -66,15 +66,16 @@ export const purgeAllLocalData = async (): Promise<void> => {
     console.warn('[auth] signOut err:', e)
   }
 
-  // 2. 清 Dexie 全部业务表（7 张表超过 transaction 5 张表的重载，用数组形式）
+  // 2. 清 Dexie 全部业务表（attachments 单独写,因为 7→8 张表超过 transaction 默认 5 张表的重载，用数组形式）
   await db.transaction(
     'rw',
-    [db.notes, db.tags, db.note_tags, db.sync_queue, db.sync_metadata, db.conflicts, db.cache],
+    [db.notes, db.tags, db.note_tags, db.sync_queue, db.sync_metadata, db.conflicts, db.cache, db.attachments],
     async () => {
       await Promise.all([
         db.notes.clear(), db.tags.clear(), db.note_tags.clear(),
         db.sync_queue.clear(), db.sync_metadata.clear(),
         db.conflicts.clear(), db.cache.clear(),
+        db.attachments.clear(),
       ])
     },
   )

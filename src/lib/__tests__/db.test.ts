@@ -37,9 +37,10 @@ describe('db', () => {
     await openDb()
   })
 
-  it('创建 7 个 store', () => {
+  it('创建 8 个 store(v6 起加 attachments)', () => {
     const names = [...db.tables].map((t) => t.name).sort()
     expect(names).toEqual([
+      'attachments',
       'cache',
       'conflicts',
       'note_tags',

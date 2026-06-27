@@ -6,17 +6,21 @@
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie'
-import type { Note, Tag, NoteTag, SyncQueueItem, SyncMetadata, ConflictRecord, CacheEntry } from '@/types'
+import type {
+  Note, Tag, NoteTag, SyncQueueItem, SyncMetadata, ConflictRecord, CacheEntry,
+  Attachment,
+} from '@/types'
 
 const DB_NAME = 'ffn_db'
-const DB_VERSION = 5
+const DB_VERSION = 6
+// v5 → v6: notes 加 image_uploaded_at 部分索引 + 新 attachments store
 // v4 → v5: notes 加 archived_at 索引 + 规范化 undefined → null
 // v3 → v4: ...
 // v0.7.0 → v1.2: 旧 'memos' store 升级时显式删除
 
 /**
  * Dexie upgrade transaction 的运行时扩展
- * - Dexie 4.x 类型未声明 oldVersion / raw idbdb，但运行时存在
+ * - Dexie 4.x 类型未声明 oldVersion / raw idbdb,但运行时存在
  * - 原 JS 代码访问这些字段是为了删除旧版本遗留的 'memos' object store
  * - TS 迁移保留该行为（cast 后调用，原 try/catch 兜底）
  */
@@ -28,26 +32,28 @@ interface DexieUpgradeTx {
 export type FfnDb = Dexie & {
   notes: EntityTable<Note, 'id'>
   tags: EntityTable<Tag, 'id'>
-  // note_tags 是复合主键 [note_id+tag_id]，EntityTable 第二参数要求 keyof T，
+  // note_tags 是复合主键 [note_id+tag_id],EntityTable 第二参数要求 keyof T,
   // 改用 Table<NoteTag, [string, string]> 兼容复合键类型
   note_tags: Table<NoteTag, [string, string]>
   sync_queue: EntityTable<SyncQueueItem, 'id'>
   sync_metadata: EntityTable<SyncMetadata, 'key'>
   conflicts: EntityTable<ConflictRecord, 'id'>
   cache: EntityTable<CacheEntry, 'key'>
+  attachments: EntityTable<Attachment, 'id'>
 }
 
 export const db = new Dexie(DB_NAME) as FfnDb
 
 db.version(DB_VERSION)
   .stores({
-    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at',
+    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at, image_uploaded_at',
     tags: 'id, name, sync_status, deleted_at',
     note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at, sync_status',
     sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
     sync_metadata: 'key',
     conflicts: 'id, entity_type, entity_id, created_at',
     cache: 'key, expires_at',
+    attachments: 'id, note_id, kind, [note_id+kind]',
   })
   .upgrade(async (tx) => {
     const rawTx = tx as unknown as DexieUpgradeTx
@@ -69,6 +75,11 @@ db.version(DB_VERSION)
       await tx.table('notes').toCollection().modify((n: Note) => {
         if (n.archived_at === undefined) n.archived_at = null
       })
+    }
+    // v5 → v6: image_* 字段默认 null;attachments store 由 schema 字符串自动建,无需 modify rows
+    // 若未来要做 image_mime 老数据规范化,在这里加
+    if (rawTx.oldVersion < 6) {
+      // no-op:Dexie 自动从 schema 字符串建 attachments store;notes 加 image_uploaded_at 部分索引
     }
   })
 
@@ -142,13 +153,14 @@ const makeFreshDb = (): FfnDb => {
   // 新 Dexie 实例，避开旧实例的 internal state 污染
   const fresh = new Dexie(DB_NAME) as FfnDb
   fresh.version(DB_VERSION).stores({
-    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at',
+    notes: 'id, status, created_at, updated_at, sync_status, deleted_at, archived_at, image_uploaded_at',
     tags: 'id, name, sync_status, deleted_at',
     note_tags: '[note_id+tag_id], note_id, tag_id, deleted_at, sync_status',
     sync_queue: '++id, type, entity_type, entity_id, created_at, priority, status',
     sync_metadata: 'key',
     conflicts: 'id, entity_type, entity_id, created_at',
     cache: 'key, expires_at',
+    attachments: 'id, note_id, kind, [note_id+kind]',
   }).upgrade(async (tx) => {
     const rawTx = tx as unknown as DexieUpgradeTx
     if (rawTx.oldVersion < 2) {
@@ -165,6 +177,10 @@ const makeFreshDb = (): FfnDb => {
       await tx.table('notes').toCollection().modify((n: Note) => {
         if (n.archived_at === undefined) n.archived_at = null
       })
+    }
+    // v5 → v6 同主 db:no-op(attachments store 由 schema 字符串自动建)
+    if (rawTx.oldVersion < 6) {
+      // no-op
     }
   })
   return fresh
