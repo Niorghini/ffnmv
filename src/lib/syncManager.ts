@@ -17,6 +17,8 @@
 import { v4 as uuidv4 } from 'uuid'
 import { pickWinner } from './conflict'
 import { useSyncStore } from '@/stores/useSyncStore'
+import { enqueue as imageEnqueue } from './imageDownloadQueue'
+import { stopSync as stopSyncAndCleanup } from './syncInstance'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   Note, Tag, NoteTag,
@@ -145,6 +147,18 @@ export class SyncManager {
     return true
   }
 
+  /** 只停 poll,不 disconnect realtime(好让 UI 切 login 之前短暂续存) */
+  private stopPolling(): void {
+    if (this._pollTimer) {
+      clearTimeout(this._pollTimer)
+      this._pollTimer = null
+    }
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer)
+      this._retryTimer = null
+    }
+  }
+
   async stop(): Promise<void> {
     if (this.realtimeChannel) {
       await this.supabase.removeChannel(this.realtimeChannel)
@@ -161,6 +175,19 @@ export class SyncManager {
   }
 
   // ─── 全量增量同步 ───────────────────────────────────────────────────
+  private readonly AUTH_ERROR_PATTERNS = [
+    /Invalid Refresh Token/i,
+    /Refresh Token Not Found/i,
+    /JWT expired/i,
+    /token is invalid/i,
+    /PGRST301/i, // PostgREST unauthorized
+  ]
+
+  private isAuthError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err)
+    return this.AUTH_ERROR_PATTERNS.some((p) => p.test(msg))
+  }
+
   async fullSync(): Promise<boolean> {
     if (this.isSyncing) return false
     if (!this.userId) {
@@ -185,7 +212,14 @@ export class SyncManager {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this._setState({ status: 'error', error: msg })
-      this.scheduleRetry()
+      if (this.isAuthError(err)) {
+        console.warn('[syncManager] auth error detected, stopping sync and forcing logout:', msg)
+        // stop poll + realtime,清干净本地 session(不清 db,不然图也没了)
+        this.stopPolling()
+        void stopSyncAndCleanup()
+      } else {
+        this.scheduleRetry()
+      }
       return false
     } finally {
       this.isSyncing = false
@@ -455,6 +489,34 @@ export class SyncManager {
     })
 
     this.onLocalChange?.(entity)
+    // 图片附件:云端 notes 行有了 image_path 但本地还没 blob → 触发下载
+    if (entity === 'notes') {
+      const cloudNote = newRow as Record<string, unknown> | undefined
+      if (cloudNote?.image_path && cloudNote?.image_mime) {
+        const noteId = cloudNote.id as string
+        const imagePath = cloudNote.image_path as string
+        const thumbPath = (cloudNote.image_thumb_path as string | null) ?? null
+        const thumbSmPath = (cloudNote.image_thumb_sm_path as string | null) ?? null
+        // image_mime 已在 if 条件里校验非空，非空断言安全
+        const mime = cloudNote.image_mime as 'image/jpeg' | 'image/png' | 'image/webp'
+        // 检查本地是否已有(避免重复下载);入队走 imageDownloadQueue(并发 + 重试)
+        const existing = await this.db.attachments.where('note_id').equals(noteId).toArray()
+        const hasOriginal = existing.some((a) => a.kind === 'original')
+        if (!hasOriginal) {
+          imageEnqueue({
+            source: {
+              noteId,
+              imagePath,
+              thumbPath,
+              thumbSmPath,
+              mime,
+            },
+            // Realtime 触发 → prefetch,比 visible 优先级低,避免抢带宽
+            priority: 'prefetch',
+          })
+        }
+      }
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('data-updated', { detail: dispatchDetail }))
     }
