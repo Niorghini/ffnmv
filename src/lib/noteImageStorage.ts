@@ -1,6 +1,12 @@
 /**
  * noteImageStorage —— Supabase Storage 桶 note-images 封装
- * 使用 supabase-js storage client 处理 auth 和 multi-tenant 路径。
+ *
+ * 直接用 fetch 走 raw binary 模式上传(Content-Type header 显式设 image/jpeg),
+ * 绕开 supabase-js 2.106.2 storage-js 的 multipart FormData 路径
+ * (该路径在某些 WebView / 浏览器下导致 MIME 被识别为 application/octet-stream,
+ * 触发 bucket.allowed_mime_types 白名单 400)。
+ *
+ * 仍用 supabase.auth.getSession() 拿 access_token(JWT),保留 RLS + 鉴权链。
  */
 import { v4 as uuidv4 } from 'uuid'
 import { supabase } from './supabase'
@@ -52,9 +58,13 @@ export async function uploadNoteImage(
   const thumbKey = `${userId}/${noteId}/thumb-${id}.${ext}`
   const thumbSmKey = `${userId}/${noteId}/thumb-sm-${id}.jpg`
 
-  const bucket = supabase.storage.from(BUCKET)
-
   // 三文件串行上传,分开追踪各个耗时
+  //
+  // 历史背景:曾经用 supabase.storage.from(BUCKET).upload(key, blob, { contentType }),
+  // 但 supabase-js 2.106.2 的 storage-js 走 multipart/form-data 路径,把 blob append 到
+  // FormData 的空 name field 上,某些浏览器 / Capacitor WebView 把 multipart part 的
+  // Content-Type 解析成 application/octet-stream,触发 storage bucket allowed_mime_types
+  // 白名单 400。改用 raw binary POST + 显式 Content-Type header,server 直接拿到 mime。
   const uploadSingle = async (
     key: string,
     blob: Blob,
@@ -63,16 +73,43 @@ export async function uploadNoteImage(
   ): Promise<{ error: unknown }> => {
     const start = performance.now()
     try {
-      const result = await bucket.upload(key, blob, { upsert: false, contentType })
-      const elapsed = Math.round(performance.now() - start)
-      if (result.error) {
-        console.warn(`[imageUpload] ${label} failed after ${elapsed}ms`)
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      if (!token || !anonKey || !supabaseUrl) {
+        return { error: { message: 'no access token / anon key / url' } }
       }
-      return result
+      const url = `${supabaseUrl}/storage/v1/object/${BUCKET}/${key}`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${token}`,
+          // raw binary 模式:整个 body 就是 blob;Content-Type 直接告诉 server mime。
+          // Supabase Storage 后端会读此 header 写 storage.objects.mime_type。
+          'Content-Type': contentType,
+          'x-upsert': 'false',
+        },
+        body: blob,
+      })
+      const elapsed = Math.round(performance.now() - start)
+      if (!resp.ok) {
+        let detail = `HTTP ${resp.status}`
+        try {
+          const j = (await resp.json()) as { message?: string; error?: string }
+          detail = j.message ?? j.error ?? detail
+        } catch {
+          /* not json */
+        }
+        console.warn(`[imageUpload] ${label} failed after ${elapsed}ms: ${detail}`)
+        return { error: { message: detail } }
+      }
+      return { error: null }
     } catch (e) {
       const elapsed = Math.round(performance.now() - start)
       console.warn(`[imageUpload] ${label} threw after ${elapsed}ms:`, e instanceof Error ? e.message : e)
-      throw e
+      return { error: { message: e instanceof Error ? e.message : String(e) } }
     }
   }
 
