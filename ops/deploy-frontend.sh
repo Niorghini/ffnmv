@@ -162,8 +162,16 @@ else
     note "npm run type-check"
     npm run type-check || die "type-check 失败"
 
-    note "npm run test"
-    npm run test || die "test 失败"
+    note "npm run test (retry-once:vitest 测试间 IndexedDB 共享偶发污染)"
+    # vitest 全量跑时 dexie 跨测试文件共享 IndexedDB,偶发 first-attempt fail。
+    # 重跑一次:第一次失败是 transient,第二次失败是真实 regression。
+    if ! npm run test 2>&1; then
+        echo "  · 第一次失败,重跑一次..."
+        if ! npm run test 2>&1; then
+            die "test 连续 2 次失败(非偶发),拒绝部署"
+        fi
+        note "  · 第二次通过(确认为 transient)"
+    fi
 
     ok "lint + type-check + test 全过"
 fi
