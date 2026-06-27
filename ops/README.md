@@ -14,6 +14,84 @@
 | `deploy-rate-limit.sh` | 部署 Supabase 登录限速 env + compose patch | — |
 | `deploy-password.sh` | 部署密码最小长度(对齐前端 8 位) | — |
 | `deploy-disable-email.sh` | 关闭 prod 邮箱确认(SMTP 没配时的降级方案) | — |
+| **`deploy-frontend.sh`** | **部署前端 dist/ 到测试服务器(163.7.3.215)** | **/opt/ffn/dist/** |
+
+## 服务器拓扑(2026-06-27)
+
+| 域名 | 服务器 | 用途 | 部署路径 |
+|---|---|---|---|
+| ffn.aicyber.chat | 118.89.118.126 | **prod** | main 分支 / `npm run build:prod` |
+| ffn-test.aicyber.chat | 163.7.3.215 | 测试 | dev-* 分支 / `npm run build:test` |
+| ffn-pre.aicyber.chat | — | **已下线** | (2026-06-23) |
+
+## deploy-frontend.sh 用法
+
+**默认 dry-run** — 不带 `--apply` 只演练，不推送。强制开发者审一遍。
+
+```bash
+# 1. 先演练(看会推哪些文件)
+bash ops/deploy-frontend.sh
+
+# 2. 真推
+bash ops/deploy-frontend.sh --apply
+
+# 3. 其他模式(理论上 canary/production 也走同一脚本,但生产需要用户显式确认)
+bash ops/deploy-frontend.sh --mode production --apply
+
+# 4. 跳过质量门(应急用,慎用)
+bash ops/deploy-frontend.sh --skip-tests --apply
+```
+
+### 流程(6 步)
+
+1. **Step 0** — 验证 `--mode` 是 test/canary/production
+2. **Step 1** — 工作树必须干净；分支必须在白名单(`dev-*` / `test` / `dev` / `main`)
+3. **Step 2** — 本地 `lint` + `type-check` + `test`(可 `--skip-tests` 跳过)
+4. **Step 3** — `npm run build:<mode>` → 产物 `dist/`
+5. **Step 4** — rsync `dist/` → `root@163.7.3.215:/opt/ffn/dist/`(`--delete` 幂等)
+6. **Step 5** — curl 验证首页 200 + 6 个安全头 + 新 chunk 200
+
+### 内置安全护栏
+
+- **拒绝脏工作树部署** — 必须先 commit 所有改动
+- **拒绝未在白名单的分支** — 防止误推
+- **拒绝 mode 与分支不匹配的组合** — 比如 `mode=test` 在 `main` 分支会立即 die
+- **质量门失败立即退出** — lint/type-check/test 任一失败都不会推送
+- **推送前自动备份** — 远端 `dist/` 备份为 `dist.bak.<时间戳>`
+- **dry-run 默认开启** — 必须显式 `--apply` 才真推
+
+### 服务器前置条件
+
+163.7.3.215 上的目录结构必须已存在:
+
+```
+/opt/ffn/dist/       ← 本脚本 rsync 目标(nobody:nginx 可读)
+/opt/ffn/dist.bak.*  ← 自动备份
+```
+
+SSH 访问:`root@163.7.3.215`,密钥在 `~/.ssh/id_rsa` 或 `~/.ssh/id_ecdsa`。
+
+### 回滚
+
+服务器侧没有版本管理,旧版本被 `--delete` 清掉了。回滚步骤:
+
+```bash
+# 1. 在本地 revert 那个 commit
+git revert <bad-commit-sha>
+
+# 2. 重新跑部署
+bash ops/deploy-frontend.sh --apply
+```
+
+如果远端 `dist.bak.<时间戳>` 还在,应急可以:
+
+```bash
+ssh root@163.7.3.215 "cp -a /opt/ffn/dist.bak.<时间戳>/* /opt/ffn/dist/"
+```
+
+### 与 CI 的关系
+
+`.github/workflows/android-ci.yml` **不**触发部署,只做 CI 验证。所以本脚本是**手动部署**的入口,不是替代品。
 
 ## 当前覆盖的安全评估项
 
